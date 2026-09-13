@@ -1,0 +1,37 @@
+(ns shinkansen.publish-test
+  (:require [clojure.test :refer [deftest is]]
+            [shinkansen.publish :as publish]))
+
+(deftest self-contained-document-manifests
+  (let [html "<!DOCTYPE html><html><head><title>lake</title></head><body><h1>ok</h1></body></html>"
+        m (publish/manifest {:file "/tmp/page.html" :html html :entry-name "lake-index"})]
+    (is (true? (:ok m)))
+    (is (= "lake-index" (:entry-name m)))
+    (is (contains? (:planes m) :mirror))))
+
+(deftest document-with-external-asset-is-refused-by-name
+  ;; ADR-2609092600 :document rule: a document that fetches its own assets
+  ;; is not self-contained and cannot claim a CID. The refusal must NAME
+  ;; the offending reference, not just fail.
+  (let [html "<!DOCTYPE html><html><head><script src=\"https://cdn.example.com/lib.js\"></script></head><body></body></html>"
+        m (publish/manifest {:file "/tmp/page.html" :html html})]
+    (is (false? (:ok m)))
+    (is (= "document is not self-contained: external asset references" (:reason m)))
+    (is (= ["https://cdn.example.com/lib.js"] (:external m)))))
+
+(deftest gateway-references-are-not-external
+  ;; Links to the CID-addressed planes (kotobase / yataverse mirror) are the
+  ;; point of the framework, not violations of self-containment.
+  (let [html (str "<a href=\"https://bafkreia2cc444k5yrw57uhszfrvbri7wee3ljbpb5wfcorykk72kgxhjaq"
+                  ".ipfs.yataverse.com/\">block</a> <a href=\"https://ipfs.kotobase.net/ipfs/bafkrei\">x</a>")
+        m (publish/manifest {:file "/tmp/p.html" :html html})]
+    (is (true? (:ok m)))
+    (is (empty? (:external m)))))
+
+(deftest manifest-args-match-script-contract
+  ;; scripts/publish-document.cljk takes <file> --id <id>. Drift here breaks
+  ;; every publish; pin the shape.
+  (is (= ["/tmp/p.html" "--id" "lake-index"]
+         (publish/manifest->args {:file "/tmp/p.html" :entry-name "lake-index"})))
+  (is (= ["/tmp/p.html" "--id" "/tmp/p.html"]
+         (publish/manifest->args {:file "/tmp/p.html"}))))

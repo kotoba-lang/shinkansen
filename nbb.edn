@@ -1,0 +1,3 @@
+;; GENERATED — do not edit. nbb.edn is the config name by owner decision
+;; (ADR kbb cutover; the engine hardcodes it and kbb.edn is taken).
+{:paths ["src" "test"]}

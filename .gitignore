@@ -1,0 +1,4 @@
+.bb.edn
+node_modules/
+.shadow-cljs/
+out/

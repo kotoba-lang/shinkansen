@@ -1,0 +1,11 @@
+{:paths ["src"]
+ ;; top-level :deps は workspace 内 :local/root のみ（ADR-2608201300）。
+ ;; third-party maven / external-git は alias 側にのみ足す。
+ :deps {org.clojure/clojure {:mvn/version "1.12.0"}
+        io.github.kotoba-lang/content-address {:local/root "../content-address"}
+        io.github.kotoba-lang/io-ipld {:local/root "../io-ipld"}
+        io.github.kotoba-lang/io-multiformats {:local/root "../io-multiformats"}}
+ :aliases
+ {:test {:extra-paths ["test"]
+         :main-opts ["-m" "shinkansen.test-runner"]}}}
+
