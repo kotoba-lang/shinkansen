@@ -42,7 +42,8 @@ and cannot claim a CID.
 
 ## Repo layout
 
-    src/shinkansen/publish.cljk     view/document → CID (both planes), fail-closed
+    docs/SPEC.md                   仕様（設計原理・モジュール契約・検証・次の一段）
+    src/shinkansen/publish.cljk    view/document → CID (both planes), fail-closed
     src/shinkansen/state.cljk      db value → CID chain (Unison-style content addressing)
     src/shinkansen/mcp.cljk        MCP tool surface (stdio JSON-RPC, kotoba-server shape)
     kotoba/                        .kotoba guests (bridge modules, compiled by amu)
@@ -51,7 +52,7 @@ and cannot claim a CID.
 ## Test
 
 ```bash
-kbb -M:test
+kbb -M:test        # 19 tests / 36 assertions, 0 failures, 0 errors
 ```
 
 ## Status
