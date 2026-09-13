@@ -101,6 +101,10 @@
             tool (:name params)
             args (or (:arguments params) {})
             result (handle-call tool args (:handlers ctx))]
-        (json-rpc-ok id {:content [{:type "text" :text (binding [*print-readably* true]
-                                                         (pr-str result))}]}))
+        ;; A handler may answer synchronously or with a Promise (the live
+        ;; stdio handlers fetch over HTTP). Flatten to a promise of a
+        ;; response either way — the caller decides how to await it.
+        (if (instance? js/Promise result)
+          (.then result #(json-rpc-ok id {:content [{:type "text" :text (binding [*print-readably* true] (pr-str %))}]}))
+          (json-rpc-ok id {:content [{:type "text" :text (binding [*print-readably* true] (pr-str result))}]})))
       (json-rpc-error id -32601 (str "method not found: " (or method ""))))))

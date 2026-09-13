@@ -52,8 +52,19 @@ and cannot claim a CID.
 ## Test
 
 ```bash
-kbb -M:test        # 19 tests / 36 assertions, 0 failures, 0 errors
+npm test           # 25 tests / 49 assertions, 0 failures, 0 errors (nbb)
 ```
+
+## MCP stdio server
+
+```bash
+npm run mcp        # JSON-RPC over stdin/stdout; lake = https://yataverse.com
+# e.g.: echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | npm run mcp
+```
+
+Four tools: `lake_list` / `lake_head` / `lake_fetch` / `lake_dispatch`.
+`lake_dispatch` honestly answers "no app attached yet (R0)" — declared but
+unimplemented must be visible.
 
 ## Status
 
