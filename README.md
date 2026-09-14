@@ -52,7 +52,9 @@ and cannot claim a CID.
 ## Test
 
 ```bash
-npm test           # 25 tests / 49 assertions, 0 failures, 0 errors (nbb)
+npm test           # nbb runner: requires each test ns explicitly (nbb 1.5.212
+                   # no longer auto-requires), prints per-ns + TOTAL summary,
+                   # exits non-zero on failure. 26 tests / 53 assertions.
 ```
 
 ## MCP stdio server

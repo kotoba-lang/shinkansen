@@ -78,7 +78,7 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
     src/shinkansen/state.cljc    db 値 → CID chain（純粋、hash fn 注入、persistence は caller）
     src/shinkansen/publish.cljc  publish manifest（自己完結検査 + scripts/publish-document.cljk の argv）
     src/shinkansen/mcp.cljc      MCP tool 宣言 + dispatch（純粋、handler 注入）
-    test/                        19 tests / 36 assertions, 0 fail 0 error（nbb via kbb）
+    test/                        26 tests / 53 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -102,7 +102,7 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 19 tests / 36 assertions, 0 failures, 0 errors
+kbb -M:test        # 26 tests / 53 assertions, 0 failures, 0 errors
 ```
 
 - `same-db-value-same-cid` — 異なる event 経路で同じ db 値 → 同一 CID
@@ -126,8 +126,24 @@ kotoba-server `word mcp`（MCP stdio の形）。
 DOM capability wire の新設、mutable naming に載せる document（IPNS/DNSLink は
 naming 面であって document の identity ではない）。
 
-## 5. 次の一段（未実施、実測の順）
+## 5. 他 framework との対応
 
+shinkansen は一つの層であり、単独では web にならない。上下の層と何を所有し・
+何を所有しないかの対応表 (上位 = 表現、下位 = 基盤):
+
+| 層 | 所有する | 所有しない |
+|---|---|---|
+| **jp-go-dds** (orgs/kotoba-lang/jp-go-dds) | design tokens / base parts (page/->page, dds.css) | app shell pattern, document publish, CID |
+| **cloud-kotoba-dds** (orgs/kotoba-lang/cloud-kotoba-dds) | app shell / patterns: shell, account-entry, navigation (docs/design.md レイヤー表) | CID / MCP (発行面は持たない) |
+| **app-kotoba-cloud site.cljk kc-*** (orgs/kotoba-lang/app-kotoba-cloud) | その shell の現行 SSR 実装。`site-layout` が chrome (header/nav/footer) の唯一の定義 | CID publish (静的 Worker Static Assets のみ) |
+| **shinkansen** (この repo) | content-addressed document publish (CID = identity) + state chain + MCP lake tools — 上記 shell が作った document を**配送する** 計画面 | routing / IA / visual shell (kc-* と site-layout が正。shinkansen は再定義しない) |
+
+方向は一方向: jp-go-dds ← cloud-kotoba-dds ← app-kotoba-cloud → shinkansen。
+app-kotoba-cloud の site-layout が chrome の SSOT である限り、shinkansen 側で
+visual shell を複製しないこと (ADR-2609092600 :document の自己完結原則は
+「asset を document に同梱する」ことであり「shell を再実装する」ことではない)。
+
+## 6. 次の一段（未実施、実測の順）
 1. **guest bridge**: shitsuke の `reframe_core.kotoba` を shinkansen の state
    chain に繋ぐ `.kotoba` bridge module（db 値の EDN text を guest から出す）
 2. **yataverse lake index への着地**: worktree
