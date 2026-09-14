@@ -21,6 +21,16 @@
    :origin  "https://{cid}.ipfs.kotobase.net"        ; R2-backed web/bytes plane
    :mirror  "https://{cid}.ipfs.yataverse.com"})     ; the yataverse mirror zone (ADR-2609131630)
 
+(def ^:const two-plane-note
+  "Documented failure mode of the two-plane publish (measured, not
+  hypothetical): writing ONLY the archive plane (B2 PUT /ipfs/{cid})
+  answers 200 on the bytes plane while the web plane (R2 ipld/{cid})
+  answers 502 — the document half-exists and consumers see a dead
+  origin. A publish that does not write BOTH planes is not a publish.
+  Recorded on every manifest so tooling and humans see the contract
+  next to the planes it governs."
+  "archive-only write: bytes plane 200 / web plane 502 — publish BOTH planes or it is not a publish")
+
 (defn- gateway-url?
   "A CID-addressed gateway URL is the content itself, not an external
   asset. The URL forms are the four planes: path-style (`https://
@@ -58,7 +68,8 @@
       {:ok true
        :file file
        :entry-name entry-name
-       :planes bytes-planes})))
+       :planes bytes-planes
+       :publish-contract two-plane-note})))
 
 (defn manifest->args
   "The argv for scripts/publish-document.cljk. Kept in one place so the

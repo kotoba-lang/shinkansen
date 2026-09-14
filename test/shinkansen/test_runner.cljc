@@ -1,12 +1,48 @@
 (ns shinkansen.test-runner
   "Minimal nbb-compatible test runner. Requires the test namespaces and runs
-  cljs.test over them; exits non-zero on any failure so cron/CI read truth."
-  (:require [clojure.test :refer [run-tests]]))
+  cljs.test over them; exits non-zero on any failure so cron/CI read truth.
+  Two nbb 1.5.212 quirks handled here:
+  - cljs.test/run-tests no longer auto-requires namespaces ('No namespace:
+    shinkansen.state-test found'), so the :require below is load-bearing;
+  - run-tests returns nil and *report-counters* is not exposed on this
+    engine, so failure detection is via the printed per-namespace summary +
+    a custom :report hook capturing pass/fail into an atom."
+  (:require [clojure.test :as t :refer [run-tests]]
+            shinkansen.bridge-test
+            shinkansen.state-test
+            shinkansen.mcp-test
+            shinkansen.publish-test))
+
+(def totals (atom {:tests 0 :asserts 0 :fail 0 :error 0}))
+(defonce ^:private counts (atom {:n 0}))
+
+(defonce ^:private orig-report t/report)
+(defn- counting-report [m]
+  (case (:type m)
+    :pass (do (swap! counts update :n inc) (orig-report m))
+    :fail (do (swap! counts update :n inc) (orig-report m))
+    :error (do (swap! counts update :n inc) (orig-report m))
+    :summary (do (swap! totals (fn [s]
+                                 {:tests (+ (:tests s) (or (:test m) 0))
+                                  :asserts (+ (:asserts s) (:n @counts))
+                                  :fail (+ (:fail s) (or (:fail m) 0))
+                                  :error (+ (:error s) (or (:error m) 0))}))
+                 (println "\nRan" (:test m) "tests containing" (:n @counts) "assertions.")
+                 (reset! counts {:n 0})
+                 (println (:fail m) "failures," (:error m) "errors."))
+    :begin-test-ns (do (println "Testing" (some-> m :ns ns-name))
+                       (orig-report m))
+    (orig-report m)))
 
 (defn -main [& _args]
-  (let [summary (run-tests 'shinkansen.state-test 'shinkansen.mcp-test 'shinkansen.publish-test)]
-    (println "Ran" (:test summary) "tests containing" (:assert summary) "assertions.")
-    (println (:fail summary) "failures," (:error summary) "errors.")
-    (if (and (zero? (:fail summary)) (zero? (:error summary)))
+  (reset! totals {:tests 0 :asserts 0 :fail 0 :error 0})
+  (set! t/report counting-report)
+  (doseq [ns-name ['shinkansen.bridge-test 'shinkansen.state-test
+                   'shinkansen.mcp-test 'shinkansen.publish-test]]
+    (run-tests ns-name))
+  (set! t/report orig-report)
+  (let [{:keys [tests asserts fail error]} @totals]
+    (println "TOTAL:" tests "tests," asserts "assertions," fail "failures," error "errors.")
+    (if (and (zero? fail) (zero? error))
       nil
-      (throw (ex-info "tests failed" summary)))))
+      (throw (ex-info "tests failed" {:fail fail :error error})))))

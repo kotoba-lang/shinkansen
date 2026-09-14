@@ -35,3 +35,13 @@
          (publish/manifest->args {:file "/tmp/p.html" :entry-name "lake-index"})))
   (is (= ["/tmp/p.html" "--id" "/tmp/p.html"]
          (publish/manifest->args {:file "/tmp/p.html"}))))
+
+(deftest manifest-annotates-two-plane-failure-mode
+  ;; The two-plane failure mode (archive-only write → bytes plane 200 /
+  ;; web plane 502) must be ON the manifest, not only in a doc file: the
+  ;; manifest is what tooling and the operator read at publish time.
+  (let [m (publish/manifest {:file "/tmp/ok.html" :html "<html><body>ok</body></html>"})]
+    (is (true? (:ok m)))
+    (is (string? (:publish-contract m)))
+    (is (re-find #"archive-only" (:publish-contract m)))
+    (is (re-find #"502" (:publish-contract m)))))
