@@ -47,7 +47,7 @@ and cannot claim a CID.
     src/shinkansen/state.cljk      db value → CID chain (Unison-style content addressing)
     src/shinkansen/mcp.cljk        MCP tool surface (stdio JSON-RPC, kotoba-server shape)
     src/shinkansen/viewport.cljc   multi-screen-size contract (viewport meta + phone band)
-    src/shinkansen/audit.cljc      UI/UX document contract as a deterministic fitness function (13 axes)
+    src/shinkansen/audit.cljc      UI/UX document contract as a deterministic fitness function (16 axes)
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta kaizen loop, judge = audit
     kotoba/                        .kotoba guests (bridge modules, compiled by amu)
     test/                          kbb -M:test
@@ -57,7 +57,7 @@ and cannot claim a CID.
 ```bash
 npm test           # nbb runner: requires each test ns explicitly (nbb 1.5.212
                    # no longer auto-requires), prints per-ns + TOTAL summary,
-                   # exits non-zero on failure. 72 tests / 194 assertions.
+                   # exits non-zero on failure. 76 tests / 208 assertions.
 ```
 
 ## MCP stdio server

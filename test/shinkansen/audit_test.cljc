@@ -59,6 +59,12 @@
 
 (defn- axis [report id] (first (filter #(= id (:id %)) (:axes report))))
 
+(def clean-ctx
+  "Everything the audit needs to measure every axis of good-doc."
+  {:assets #{"/js/session.js"}
+   :documents #{"/docs/" "/account/" "/billing/"}
+   :csp :none})
+
 (deftest walker-sees-structure
   (let [els (audit/elements good-doc)
         by-id (fn [id] (first (filter #(= id (get-in % [:attrs "id"])) els)))]
@@ -78,13 +84,13 @@
         "pending cells under a closed details are not idle-visible")))
 
 (deftest good-document-is-clean
-  (let [r (audit/score-document {:file "good.html" :html good-doc} {:assets #{"/js/session.js"}})]
+  (let [r (audit/score-document {:file "good.html" :html good-doc} clean-ctx)]
     (is (empty? (:findings r)) (pr-str (:findings r)))
     (is (empty? (:unmeasured r)))
     (is (= 100.0 (:overall r)))))
 
 (deftest account-like-document-names-every-failure
-  (let [r (audit/score-document {:file "account.html" :html account-like-doc} {:assets #{}})
+  (let [r (audit/score-document {:file "account.html" :html account-like-doc} {:assets #{} :documents #{} :csp :none})
         f (fn [id] (:finding (axis r id)))]
     (testing "assets" (is (str/includes? (f :assets-resolve) "referenced but absent from the published assets: /js/session.js")))
     (testing "ids" (is (str/includes? (f :unique-ids) "account-refresh×4"))
@@ -104,7 +110,7 @@
     (is (< (:overall r) 40.0) (str "overall " (:overall r)))))
 
 (deftest unmeasured-assets-are-not-a-pass
-  (let [r (audit/score-document {:file "a" :html good-doc} {})]
+  (let [r (audit/score-document {:file "a" :html good-doc} (dissoc clean-ctx :assets))]
     (is (= [{:axis :assets-resolve :why "no asset set supplied — cannot tell whether the referenced scripts exist; a document whose script 404s never hydrates"}]
            (:unmeasured r)))
     (is (nil? (:score (axis r :assets-resolve))))
@@ -125,7 +131,7 @@
     (is (= 0.0 (:overall r)))))
 
 (deftest audit-aggregates-findings-heaviest-first
-  (let [r (audit/audit [{:file "good" :html good-doc} {:file "bad" :html account-like-doc}] {:assets #{"/js/session.js"}})]
+  (let [r (audit/audit [{:file "good" :html good-doc} {:file "bad" :html account-like-doc}] clean-ctx)]
     (is (= 2 (count (:documents r))))
     (is (= ["bad"] (:files (first (:findings r)))))
     (is (apply >= (map :headroom (:findings r))) "sorted by headroom")
@@ -142,7 +148,7 @@
   ".kc-sb{position:fixed;inset-block:0;inline-size:15rem}@media(max-width:30rem){.kc-sb{padding:0}}")
 
 (deftest external-stylesheet-not-supplied-is-unmeasured
-  (let [r (audit/score-document {:file "e" :html external-css-doc} {:assets #{"/css/site.css"}})
+  (let [r (audit/score-document {:file "e" :html external-css-doc} {:assets #{"/css/site.css"} :csp :none})
         why (set (map :axis (:unmeasured r)))]
     (is (= #{:viewport :fixed-anchor} why))
     (is (str/includes? (:why (first (:unmeasured r))) "external stylesheet(s) not supplied: /css/site.css"))
@@ -150,7 +156,7 @@
 
 (deftest external-stylesheet-supplied-is-measured
   (let [r (audit/score-document {:file "e" :html external-css-doc}
-                                {:assets #{"/css/site.css"} :stylesheets {"/css/site.css" site-css}})]
+                                {:assets #{"/css/site.css"} :stylesheets {"/css/site.css" site-css} :csp :none})]
     (is (empty? (:unmeasured r)))
     (is (= 1.0 (:score (axis r :viewport))) "the phone band came from the external sheet")
     (is (str/includes? (:finding (axis r :fixed-anchor)) "position:fixed without left/right/inset-inline on: .kc-sb")
@@ -158,7 +164,7 @@
 
 (deftest inline-css-part-is-measured-too
   (let [r (audit/score-document {:file "e" :html external-css-doc :css site-css}
-                                {:assets #{"/css/site.css"}})]
+                                {:assets #{"/css/site.css"} :csp :none})]
     ;; :css covers the CSS axes' INPUT, but the link is still unresolved by
     ;; :stylesheets — the audit says so rather than guessing they are the same
     (is (= #{:viewport :fixed-anchor} (set (map :axis (:unmeasured r)))))))
@@ -177,3 +183,40 @@
   (let [doc "<html><head></head><body><main id=\"main\"><h1>設定</h1><span class=\"ck-console__label\">ORG HANDLE</span><th>FREE TIER</th></main></body></html>"
         r (audit/score-document {:file "h" :html doc} {:assets #{}})]
     (is (str/includes? (:finding (axis r :plain-labels)) "2 label(s) in implementation language: ORG HANDLE | FREE TIER"))))
+
+(deftest links-resolve-against-documents-and-routes
+  (let [doc "<html><head></head><body><nav><a href=\"/docs/\">docs</a><a href=\"/docs/reference/quickstart/\">qs</a><a href=\"/account#panel\">acct</a><a href=\"/v1/models\">api</a><a href=\"/agent-quickstart.md\">md</a><a href=\"https://x.example/\">ext</a><a href=\"mailto:a@b\">m</a></nav><main id=\"main\"></main></body></html>"
+        ctx {:documents #{"/docs/reference/quickstart/" "/agent-quickstart.md"} :routes ["/account" "/v1/"] :csp :none}
+        r (audit/score-document {:file "l" :html doc} ctx)]
+    (is (= "links to nothing published: /docs/ — a person who follows them gets the 404 page; emit the document or point the link at one that exists"
+           (:finding (axis r :links-resolve)))
+        "the nav's own /docs/ is dead; the document, the prefix route, the exact route, the file and the external links are not")
+    (is (= 1.0 (:score (axis (audit/score-document {:file "l" :html doc} (update ctx :documents conj "/docs/")) :links-resolve))))
+    (is (str/includes? (:why (first (:unmeasured (audit/score-document {:file "l" :html doc} {:csp :none})))) "no :documents / :routes supplied"))))
+
+(deftest normalize-path-folds-index-and-trailing-slash
+  (is (= "/docs/" (audit/normalize-path "/docs")))
+  (is (= "/docs/" (audit/normalize-path "/docs/index.html")))
+  (is (= "/docs/" (audit/normalize-path "/docs/?x=1#y")))
+  (is (= "/llms.txt" (audit/normalize-path "/llms.txt"))))
+
+(deftest csp-must-allow-the-documents-own-assets
+  (let [doc "<html><head><link rel=\"stylesheet\" href=\"/css/site.css\"><script src=\"/js/session.js\"></script></head><body><main id=\"main\"></main></body></html>"
+        base {:assets #{"/css/site.css" "/js/session.js"} :stylesheets {"/css/site.css" ""} :documents #{}}
+        blocked (audit/score-document {:file "c" :html doc} (assoc base :csp "default-src 'none'; style-src 'unsafe-inline'; script-src 'self' https://freebuff.com"))
+        open (audit/score-document {:file "c" :html doc} (assoc base :csp "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'"))
+        none (audit/score-document {:file "c" :html doc} (assoc base :csp :none))
+        unknown (audit/score-document {:file "c" :html doc} base)]
+    (is (= "style-src blocks /css/site.css — the browser never requests them: the page ships unstyled / inert while its bytes audit clean"
+           (:finding (axis blocked :csp-allows-assets))))
+    (is (= 1.0 (:score (axis open :csp-allows-assets))))
+    (is (= 1.0 (:score (axis none :csp-allows-assets))) ":none is an explicit statement, not an omission")
+    (is (str/includes? (:why (first (filter #(= :csp-allows-assets (:axis %)) (:unmeasured unknown)))) "no :csp supplied"))))
+
+(deftest pre-blocks-need-an-overflow-rule
+  (let [doc (fn [css] (str "<html><head><style>" css "</style></head><body><main id=\"main\"><pre>code</pre></main></body></html>"))
+        ctx {:assets #{} :documents #{} :csp :none}]
+    (is (= "1 <pre> block(s) and no pre{overflow-x:auto} rule — on a 390px phone the code clips mid-line and cannot be scrolled"
+           (:finding (axis (audit/score-document {:file "p" :html (doc "pre{padding:1rem}")} ctx) :pre-overflow))))
+    (is (= 1.0 (:score (axis (audit/score-document {:file "p" :html (doc ".kc-docs pre{overflow-x:auto}")} ctx) :pre-overflow))))
+    (is (= 1.0 (:score (axis (audit/score-document {:file "p" :html "<html><head></head><body><main id=\"main\"><p>no code</p></main></body></html>"} ctx) :pre-overflow))))))

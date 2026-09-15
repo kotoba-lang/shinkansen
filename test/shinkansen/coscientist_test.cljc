@@ -8,7 +8,7 @@
             [shinkansen.coscientist :as cosci]))
 
 (def before
-  (audit/audit [{:file "account.html" :html fixtures/account-like-doc}] {:assets #{}}))
+  (audit/audit [{:file "account.html" :html fixtures/account-like-doc}] {:assets #{} :documents #{} :csp :none}))
 
 (deftest one-hypothesis-per-finding-with-an-owner
   (let [hyps (cosci/generate (:findings before))]
@@ -46,9 +46,9 @@
     (is (not (:converged? meta)))))
 
 (deftest converged-only-when-clean-and-fully-measured
-  (let [clean (audit/audit [{:file "good" :html fixtures/good-doc}] {:assets #{"/js/session.js"}})
+  (let [clean (audit/audit [{:file "good" :html fixtures/good-doc}] fixtures/clean-ctx)
         unmeasured (audit/audit [{:file "good" :html fixtures/good-doc}] {})
-        empty-run (audit/audit [] {:assets #{}})]
+        empty-run (audit/audit [] fixtures/clean-ctx)]
     (is (:converged? (:meta (cosci/kaizen-cycle clean {:n 2}))))
     (is (str/includes? (:doc (cosci/kaizen-cycle clean {:n 2})) "## Converged"))
     (is (not (:converged? (:meta (cosci/kaizen-cycle unmeasured {:n 2}))))
@@ -58,7 +58,7 @@
         "zero documents is not convergence")))
 
 (deftest delta-is-the-measurement
-  (let [after (audit/audit [{:file "account.html" :html fixtures/good-doc}] {:assets #{"/js/session.js"}})
+  (let [after (audit/audit [{:file "account.html" :html fixtures/good-doc}] fixtures/clean-ctx)
         d (cosci/delta before after)]
     (is (pos? (:delta d)))
     (is (= 100.0 (:overall-after d)))

@@ -80,9 +80,9 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
     src/shinkansen/mcp.cljc      MCP tool 宣言 + dispatch（純粋、handler 注入）
     src/shinkansen/locale.cljc   locale negotiation 契約（cookie ベース、path 非依存、純粋）
     src/shinkansen/viewport.cljc multi-screen-size 契約（viewport meta + xs band、静的 audit）
-    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（13 軸、理由付き finding）
+    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（16 軸、理由付き finding）
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
-    test/                        72 tests / 194 assertions, 0 fail 0 error（nbb via kbb）
+    test/                        76 tests / 208 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -147,6 +147,14 @@ framework の改善は co-scientist の approach で進める —— **測れな
 | `:nav-before-content` | phone band で 13 link（1,148px）の nav が本文の前に来る |
 | `:skip-link` / `:plain-labels` / `:idle-disabled` / `:repeated-actions` / `:note-density` / `:locale-path-links` / `:fixed-anchor` | 同 page で各 1 件以上 |
 
+- **2026-09-15 第 2 周（オーナー実測「/docs/ 下層で layout が崩れる・ページが見つからない」）で足した 3 軸**:
+  `:links-resolve`（same-origin の `<a href>` は公開 document か宣言 route に解決する —
+  sidebar が `/docs/` を link しながら `/docs/index.html` を emit していなかった = framework
+  自身が書いた 404）、`:csp-allows-assets`（host の CSP が document 自身の stylesheet /
+  script を許す — `style-src 'unsafe-inline'` の下で外部 CSS に移した瞬間、全頁が
+  無スタイルで届きながら bytes の audit は 100 だった）、`:pre-overflow`（`<pre>` を持つ
+  document に `overflow-x:auto` — phone で code が行の途中で切れる）。ctx に `:documents` /
+  `:routes` / `:csp`（文字列、または CSP を配らないことの明示 `:none`）を渡す。
 - **測れない軸は pass にしない**: asset set を渡さないと `:assets-resolve` は
   `:unmeasured` に載り平均から除外される（0 でも 1 でもない）。0 枚の audit は
   `:empty? true` で overall 0。
@@ -166,7 +174,7 @@ framework の改善は co-scientist の approach で進める —— **測れな
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 72 tests / 194 assertions, 0 failures, 0 errors
+kbb -M:test        # 76 tests / 208 assertions, 0 failures, 0 errors
 ```
 
 ⚠ `test_runner` の `-main` に**列挙されていない** test ns は require されても走らない。

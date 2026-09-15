@@ -38,6 +38,18 @@
                        negotiates by cookie (shinkansen.locale)
     :fixed-anchor      a position:fixed rule without an inline anchor
                        floats at its static position (a dead gutter)
+    :links-resolve     every same-origin <a href> path resolves to a
+                       published document or a declared route — the nav
+                       that links /docs/ when no /docs/ was emitted is a
+                       404 the framework itself wrote (measured 2026-09-15)
+    :csp-allows-assets the response's Content-Security-Policy lets the
+                       document's own same-origin stylesheet/script load —
+                       abc2c4f moved CSS to /css/site.css under a CSP of
+                       style-src 'unsafe-inline' and every page shipped
+                       unstyled while the bytes audited at 100
+    :pre-overflow      a document with <pre> needs a rule that lets code
+                       blocks scroll (overflow(-x): auto|scroll) — on the
+                       phone band they clip mid-line otherwise
 
   Fail-closed: an axis that CANNOT be measured (no asset set supplied for
   :assets-resolve) is reported under :unmeasured and excluded from the
@@ -183,6 +195,22 @@
           els))
 
 ;; --- the axes, as data ---------------------------------------------------
+
+(defn normalize-path
+  "/docs → /docs/ ; /docs/index.html → /docs/ ; query and fragment dropped."
+  [p]
+  (let [p (first (str/split (str p) #"[?#]" 2))
+        p (if (str/ends-with? p "/index.html") (subs p 0 (- (count p) (count "index.html"))) p)]
+    (if (or (str/ends-with? p "/") (re-find #"\.[A-Za-z0-9]+$" p)) p (str p "/"))))
+
+(defn- same-origin-stylesheets [els]
+  (->> els
+       (keep (fn [{:keys [tag attrs]}]
+               (when (and (= tag "link") (re-find #"(?i)stylesheet" (get attrs "rel" "")))
+                 (get attrs "href"))))
+       (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//"))))
+       (map #(first (str/split % #"[?#]" 2)))
+       distinct))
 
 (defn- ratio-score [n allowed step]
   (if (<= n allowed) 1.0 (max 0.0 (- 1.0 (* step (- n allowed))))))
@@ -389,18 +417,86 @@
                  {:score 1.0}
                  {:score 0.0
                   :finding (str "position:fixed without left/right/inset-inline on: " (str/join ", " (take 3 bad))
-                                " — the element floats at its static position (inside the body padding), leaving a dead gutter and pushing the content over twice")}))))}])
+                                " — the element floats at its static position (inside the body padding), leaving a dead gutter and pushing the content over twice")}))))}
+
+   {:id :links-resolve :weight 0.12
+    :title "Same-origin links resolve to a published document or a declared route"
+    :check (fn [{:keys [els]} {:keys [documents routes]}]
+             (let [hrefs (->> els (by-tag #{"a"}) (keep #(get-in % [:attrs "href"]))
+                              (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//"))))
+                              (map #(first (str/split % #"[?#]" 2)))
+                              (remove str/blank?)
+                              distinct)]
+               (cond
+                 (empty? hrefs) {:score 1.0}
+                 (and (nil? documents) (nil? routes))
+                 {:unmeasured "no :documents / :routes supplied — cannot tell whether the links lead anywhere; a nav that links an unpublished path is a 404 the framework wrote"}
+                 :else
+                 (let [docs (set (map normalize-path (or documents [])))
+                       routes (vec (or routes []))
+                       resolves? (fn [h]
+                                   (let [n (normalize-path h)]
+                                     (or (contains? docs n)
+                                         (some (fn [r]
+                                                 (cond (string? r) (or (= r h) (= (normalize-path r) n)
+                                                                       (and (str/ends-with? r "/") (str/starts-with? h r)))
+                                                       :else (boolean (re-find r h))))
+                                               routes))))
+                       dead (remove resolves? hrefs)]
+                   (if (empty? dead)
+                     {:score 1.0}
+                     {:score (ratio-score (count dead) 0 0.34)
+                      :finding (str "links to nothing published: " (str/join ", " (take 6 dead))
+                                    (when (> (count dead) 6) (str " (+" (- (count dead) 6) ")"))
+                                    " — a person who follows them gets the 404 page; emit the document or point the link at one that exists")})))))}
+
+   {:id :csp-allows-assets :weight 0.10
+    :title "The response CSP lets the document's own assets load"
+    :check (fn [{:keys [els]} {:keys [csp]}]
+             (let [sheets (same-origin-stylesheets els)
+                   scripts (->> els (filter #(= "script" (:tag %))) (keep #(get-in % [:attrs "src"]))
+                                (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//")))))
+                   directive (fn [name]
+                               (some (fn [d] (let [[k & vs] (str/split (str/trim d) #"\s+")]
+                                               (when (= k name) (set vs))))
+                                     (str/split (str csp) #";")))
+                   allows? (fn [name]
+                             (let [d (or (directive name) (directive "default-src") #{})]
+                               (boolean (or (contains? d "'self'") (contains? d "*")))))]
+               (cond
+                 (and (empty? sheets) (empty? scripts)) {:score 1.0}
+                 (nil? csp) {:unmeasured "no :csp supplied — pass the Content-Security-Policy the host serves with this document, or :none when it serves none; a CSP that omits 'self' blocks the document's own stylesheet silently"}
+                 (= csp :none) {:score 1.0}
+                 :else
+                 (let [blocked (cond-> []
+                                 (and (seq sheets) (not (allows? "style-src")))
+                                 (conj (str "style-src blocks " (str/join ", " sheets)))
+                                 (and (seq scripts) (not (allows? "script-src")))
+                                 (conj (str "script-src blocks " (str/join ", " scripts))))]
+                   (if (empty? blocked)
+                     {:score 1.0}
+                     {:score 0.0
+                      :finding (str (str/join "; " blocked)
+                                    " — the browser never requests them: the page ships unstyled / inert while its bytes audit clean")})))))}
+
+   {:id :pre-overflow :weight 0.05
+    :title "Code blocks can scroll on the phone band"
+    :check (fn [{:keys [els css-html css-missing]} _]
+             (let [pres (count (filter #(= "pre" (:tag %)) els))]
+               (cond
+                 (zero? pres) {:score 1.0}
+                 (seq css-missing) {:unmeasured (str "external stylesheet(s) not supplied: " (str/join ", " css-missing) " — the pre overflow rule lives there")}
+                 (some (fn [css]
+                         (some (fn [[_ sel decls]]
+                                 (and (re-find #"(?:^|[\s,>])pre\b" sel)
+                                      (re-find #"overflow(?:-x)?\s*:\s*(?:auto|scroll)" decls)))
+                               (re-seq #"([^{}]+)\{([^{}]*)\}" css)))
+                       (style-blocks css-html))
+                 {:score 1.0}
+                 :else {:score 0.0
+                        :finding (str pres " <pre> block(s) and no pre{overflow-x:auto} rule — on a 390px phone the code clips mid-line and cannot be scrolled")})))}])
 
 ;; --- scoring --------------------------------------------------------------
-
-(defn- same-origin-stylesheets [els]
-  (->> els
-       (keep (fn [{:keys [tag attrs]}]
-               (when (and (= tag "link") (re-find #"(?i)stylesheet" (get attrs "rel" "")))
-                 (get attrs "href"))))
-       (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//"))))
-       (map #(first (str/split % #"[?#]" 2)))
-       distinct))
 
 (defn score-document
   "Score one emitted document {:file :html :css?}. `ctx` may carry
