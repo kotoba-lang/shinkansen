@@ -211,7 +211,10 @@
            (:finding (axis blocked :csp-allows-assets))))
     (is (= 1.0 (:score (axis open :csp-allows-assets))))
     (is (= 1.0 (:score (axis none :csp-allows-assets))) ":none is an explicit statement, not an omission")
-    (is (str/includes? (:why (first (filter #(= :csp-allows-assets (:axis %)) (:unmeasured unknown)))) "no :csp supplied"))))
+    (is (str/includes? (:why (first (filter #(= :csp-allows-assets (:axis %)) (:unmeasured unknown)))) "no :csp supplied"))
+    (let [per-route (audit/score-document {:file "/account/" :html doc}
+                                          (assoc base :csp (fn [f] (if (= f "/account/") "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'" :none))))]
+      (is (str/starts-with? (:finding (axis per-route :csp-allows-assets)) "style-src blocks") "a per-route policy fn is consulted with the file"))))
 
 (deftest pre-blocks-need-an-overflow-rule
   (let [doc (fn [css] (str "<html><head><style>" css "</style></head><body><main id=\"main\"><pre>code</pre></main></body></html>"))

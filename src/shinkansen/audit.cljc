@@ -452,8 +452,11 @@
 
    {:id :csp-allows-assets :weight 0.10
     :title "The response CSP lets the document's own assets load"
-    :check (fn [{:keys [els]} {:keys [csp]}]
-             (let [sheets (same-origin-stylesheets els)
+    :check (fn [{:keys [els file]} {:keys [csp]}]
+             (let [;; a host serves different policies per route: :csp may be
+                   ;; (fn [file] csp-or-:none) as well as a value
+                   csp (if (fn? csp) (csp file) csp)
+                   sheets (same-origin-stylesheets els)
                    scripts (->> els (filter #(= "script" (:tag %))) (keep #(get-in % [:attrs "src"]))
                                 (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//")))))
                    directive (fn [name]
