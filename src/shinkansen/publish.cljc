@@ -12,7 +12,8 @@
   that fetches its own assets from the CDN cannot claim a CID and this
   namespace refuses to manifest one — that refusal is the whole point of
   the :document contract."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [shinkansen.viewport :as viewport]))
 
 (def ^:const bytes-planes
   "The two Location planes a published document answers on. Identity is
@@ -65,11 +66,17 @@
     (if (seq external)
       {:ok false :reason "document is not self-contained: external asset references"
        :external external}
-      {:ok true
-       :file file
-       :entry-name entry-name
-       :planes bytes-planes
-       :publish-contract two-plane-note})))
+      (let [vp (viewport/audit {:file file :html html})]
+        (if-not (:ok vp)
+          {:ok false
+           :reason "document fails the multi-screen-size contract (shinkansen.viewport)"
+           :problems (:problems vp)}
+          {:ok true
+           :file file
+           :entry-name entry-name
+           :planes bytes-planes
+           :viewport (select-keys vp [:bands :breakpoints])
+           :publish-contract two-plane-note})))))
 
 (defn manifest->args
   "The argv for scripts/publish-document.cljk. Kept in one place so the

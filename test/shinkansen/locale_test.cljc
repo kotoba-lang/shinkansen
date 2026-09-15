@@ -78,7 +78,7 @@
 (deftest variants-pass-publish-manifest-self-contained-check
   (let [good (locale/document-variants
               {:base-name "top" :locales [:en :ja]
-               :html-fn #(str "<html><body>page " (name %) "</body></html>")
+               :html-fn #(str "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>@media(max-width:30rem){.x{}}</style></head><body>page " (name %) "</body></html>")
                :cid-fn (fn [_ html] (str "cid:" (hash html)))})
         bad  (locale/document-variants
               {:base-name "bad" :locales [:en]

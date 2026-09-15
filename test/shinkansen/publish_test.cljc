@@ -3,7 +3,7 @@
             [shinkansen.publish :as publish]))
 
 (deftest self-contained-document-manifests
-  (let [html "<!DOCTYPE html><html><head><title>lake</title></head><body><h1>ok</h1></body></html>"
+  (let [html "<!DOCTYPE html><html><head><title>lake</title><meta name='viewport' content='width=device-width, initial-scale=1'><style>@media(max-width:30rem){.x{}}</style><body><h1>ok</h1></body></html>"
         m (publish/manifest {:file "/tmp/page.html" :html html :entry-name "lake-index"})]
     (is (true? (:ok m)))
     (is (= "lake-index" (:entry-name m)))
@@ -22,7 +22,7 @@
 (deftest gateway-references-are-not-external
   ;; Links to the CID-addressed planes (kotobase / yataverse mirror) are the
   ;; point of the framework, not violations of self-containment.
-  (let [html (str "<a href=\"https://bafkreia2cc444k5yrw57uhszfrvbri7wee3ljbpb5wfcorykk72kgxhjaq"
+  (let [html (str "<meta name='viewport' content='width=device-width, initial-scale=1'><style>@media(max-width:30rem){.x{}}</style>" "<a href=\"https://bafkreia2cc444k5yrw57uhszfrvbri7wee3ljbpb5wfcorykk72kgxhjaq"
                   ".ipfs.yataverse.com/\">block</a> <a href=\"https://ipfs.kotobase.net/ipfs/bafkrei\">x</a>")
         m (publish/manifest {:file "/tmp/p.html" :html html})]
     (is (true? (:ok m)))
@@ -40,8 +40,25 @@
   ;; The two-plane failure mode (archive-only write → bytes plane 200 /
   ;; web plane 502) must be ON the manifest, not only in a doc file: the
   ;; manifest is what tooling and the operator read at publish time.
-  (let [m (publish/manifest {:file "/tmp/ok.html" :html "<html><body>ok</body></html>"})]
+  (let [m (publish/manifest {:file "/tmp/ok.html" :html "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>@media(max-width:30rem){.x{}}</style></head><body>ok</body></html>"})]
     (is (true? (:ok m)))
     (is (string? (:publish-contract m)))
     (is (re-find #"archive-only" (:publish-contract m)))
     (is (re-find #"502" (:publish-contract m)))))
+
+(deftest manifest-refuses-document-failing-the-viewport-contract
+  ;; The multi-screen-size contract is enforced AT PUBLISH: a document
+  ;; without a device-width viewport meta cannot claim a CID.
+  (let [m (publish/manifest {:file "/tmp/novp.html"
+                             :html "<html><body>ok</body></html>"})]
+    (is (false? (:ok m)))
+    (is (re-find #"multi-screen-size" (:reason m)))
+    (is (some #(= :viewport-missing (:id %)) (:problems m)))))
+
+(deftest manifest-carries-viewport-bands-when-responsive
+  (let [doc (str "<!doctype html><html><head>"
+                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+                 "<style>@media(max-width:30rem){.x{}}</style></head><body>ok</body></html>")
+        m (publish/manifest {:file "/tmp/vp.html" :html doc})]
+    (is (true? (:ok m)))
+    (is (seq (get-in m [:viewport :bands])))))
