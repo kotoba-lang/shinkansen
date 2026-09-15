@@ -162,3 +162,10 @@
     ;; :css covers the CSS axes' INPUT, but the link is still unresolved by
     ;; :stylesheets — the audit says so rather than guessing they are the same
     (is (= #{:viewport :fixed-anchor} (set (map :axis (:unmeasured r)))))))
+
+(deftest language-switch-links-are-not-locale-forks
+  (let [doc "<html><head></head><body><nav><a href=\"/ja/\" hreflang=\"ja\" lang=\"ja\">日本語</a><a href=\"/en/\" hreflang=\"en\">English</a></nav><main id=\"main\"><a href=\"/ja/legal/\">運営</a></main></body></html>"
+        r (audit/score-document {:file "l" :html doc} {:assets #{}})]
+    (is (= "locale-forked links: /ja/legal/ — one locale-free URL per document; the edge negotiates (shinkansen.locale). A forked link is a redirect hop at best and a dead link at worst"
+           (:finding (axis r :locale-path-links)))
+        "the hreflang switches are exempt; the plain /ja/legal/ link is not")))

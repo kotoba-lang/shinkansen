@@ -352,7 +352,11 @@
    {:id :locale-path-links :weight 0.05
     :title "No locale-forked hrefs (the host negotiates by cookie)"
     :check (fn [{:keys [els]} {:keys [locales] :or {locales #{"ja" "en"}}}]
-             (let [hits (->> els (by-tag #{"a"}) (keep #(get-in % [:attrs "href"]))
+             (let [hits (->> els (by-tag #{"a"})
+                             ;; an explicit language switch (hreflang=) IS the
+                             ;; contract's cookie-writing entry — exempt
+                             (remove #(contains? (:attrs %) "hreflang"))
+                             (keep #(get-in % [:attrs "href"]))
                              (filter (fn [h] (when-let [[_ seg] (re-find #"^/([A-Za-z-]+)(?:/|$)" h)]
                                                (contains? locales seg))))
                              distinct)]
