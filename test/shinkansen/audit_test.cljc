@@ -227,3 +227,14 @@
     (is (= 0.0 (:score (axis (audit/score-document {:file "p" :html "<html><head><style>.other{overflow:auto}</style></head><body><main id=\"main\"><pre class=\"kc-docs__config\">x</pre></main></body></html>"} ctx) :pre-overflow)))
         "…a rule for some other class does not")
     (is (= 1.0 (:score (axis (audit/score-document {:file "p" :html "<html><head></head><body><main id=\"main\"><p>no code</p></main></body></html>"} ctx) :pre-overflow))))))
+
+(deftest images-are-assets-too
+  (let [doc "<html><head></head><body><main id=\"main\"><img src=\"/assets/logo.png\" alt=\"x\"><img src=\"https://cdn.example/x.png\" alt=\"y\"></main></body></html>"
+        base {:documents #{} :stylesheets {}}]
+    (is (str/includes? (:finding (axis (audit/score-document {:file "i" :html doc} (assoc base :assets #{} :csp :none)) :assets-resolve))
+                       "referenced but absent from the published assets: /assets/logo.png")
+        "a same-origin image must be published; the external one is not this document's to publish")
+    (is (= 1.0 (:score (axis (audit/score-document {:file "i" :html doc} (assoc base :assets #{"/assets/logo.png"} :csp :none)) :assets-resolve))))
+    (is (= "img-src blocks /assets/logo.png — the browser never requests them: the page ships unstyled / inert while its bytes audit clean"
+           (:finding (axis (audit/score-document {:file "i" :html doc} (assoc base :assets #{"/assets/logo.png"} :csp "default-src 'none'; style-src 'self'")) :csp-allows-assets))))
+    (is (= 1.0 (:score (axis (audit/score-document {:file "i" :html doc} (assoc base :assets #{"/assets/logo.png"} :csp "default-src 'none'; img-src 'self'")) :csp-allows-assets))))))
