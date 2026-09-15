@@ -169,3 +169,11 @@
     (is (= "locale-forked links: /ja/legal/ — one locale-free URL per document; the edge negotiates (shinkansen.locale). A forked link is a redirect hop at best and a dead link at worst"
            (:finding (axis r :locale-path-links)))
         "the hreflang switches are exempt; the plain /ja/legal/ link is not")))
+
+(deftest acronym-in-a-heading-is-task-language
+  (let [doc "<html><head></head><body><main id=\"main\"><h1>セキュリティ製品 × NIST CSF 2.0 カタログ</h1><span class=\"ck-console__label\">確認状態</span></main></body></html>"
+        r (audit/score-document {:file "h" :html doc} {:assets #{}})]
+    (is (= 1.0 (:score (axis r :plain-labels)))))
+  (let [doc "<html><head></head><body><main id=\"main\"><h1>設定</h1><span class=\"ck-console__label\">ORG HANDLE</span><th>FREE TIER</th></main></body></html>"
+        r (audit/score-document {:file "h" :html doc} {:assets #{}})]
+    (is (str/includes? (:finding (axis r :plain-labels)) "2 label(s) in implementation language: ORG HANDLE | FREE TIER"))))

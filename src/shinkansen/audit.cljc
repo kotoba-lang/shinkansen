@@ -322,13 +322,19 @@
    {:id :plain-labels :weight 0.10
     :title "Headings and labels in task language"
     :check (fn [{:keys [els]} _]
-             (let [labels (->> (visible els)
-                               (filter (fn [{:keys [tag attrs]}]
-                                         (or (#{"h1" "h2" "h3" "label" "th" "legend" "summary"} tag)
-                                             (re-find #"(?i)__label\b|\blabel\b" (get attrs "class" "")))))
-                               (map :text) (remove str/blank?))
-                   protocol-list (filter #(re-find #"[（(][^）)]*[/／][^）)]*[）)]" %) labels)
-                   all-caps (filter #(re-find #"(?<![A-Za-z])[A-Z]{4,}(?:\s+[A-Z]{2,})*(?![a-z])" %) labels)
+             (let [vis (visible els)
+                   headings (->> vis (filter #(#{"h1" "h2" "h3" "summary"} (:tag %))) (map :text) (remove str/blank?))
+                   ;; field labels: <label>, <th>, <legend>, or a *__label class
+                   field-labels (->> vis
+                                     (filter (fn [{:keys [tag attrs]}]
+                                               (or (#{"label" "th" "legend"} tag)
+                                                   (re-find #"(?i)__label\b" (get attrs "class" "")))))
+                                     (map :text) (remove str/blank?))
+                   ;; a heading that lists protocols: 本人確認（カード認証 / Stripe Identity）
+                   protocol-list (filter #(re-find #"[（(][^）)]*[/／][^）)]*[）)]" %) (concat headings field-labels))
+                   ;; a field label shouted in caps: USERNAME / STABLE PRINCIPAL. Headings
+                   ;; are exempt — an acronym (NIST CSF 2.0) is task language there.
+                   all-caps (filter #(re-find #"^[A-Z][A-Z0-9 _-]{3,}$" %) field-labels)
                    hits (distinct (concat protocol-list all-caps))
                    n (count hits)]
                (if (zero? n)
