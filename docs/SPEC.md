@@ -78,7 +78,8 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
     src/shinkansen/state.cljc    db 値 → CID chain（純粋、hash fn 注入、persistence は caller）
     src/shinkansen/publish.cljc  publish manifest（自己完結検査 + scripts/publish-document.cljk の argv）
     src/shinkansen/mcp.cljc      MCP tool 宣言 + dispatch（純粋、handler 注入）
-    test/                        26 tests / 53 assertions, 0 fail 0 error（nbb via kbb）
+    src/shinkansen/locale.cljc   locale negotiation 契約（cookie ベース、path 非依存、純粋）
+    test/                        34 tests / 75 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -97,12 +98,39 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
 - **declaration と dispatch 表の同型 test** が「tools/list に載っているのに呼べない」
   tool の発生を落ちるようにしている
 
+### 2.3 locale negotiation は HOST/edge の権限（document は path を fork しない）
+
+オーナー決定（app-kotoba.cloud の実測に基づく）: URL path による locale 選択
+（`/ja/about`）は dead link と IA 断片化を生む（22 locale × path 複製）。shinkansen
+の framework default は **1 route = 1 language-agnostic document、locale は
+cookie（Accept-Language フォールバック付き）で negotiate、言語切替は client 側で
+cookie を書く**。
+
+- `negotiate` — 優先順位: cookie > Accept-Language q 値 > :default。cookie 値は
+  :supported に無ければ **fail-closed で無視**（stale/forged cookie は host が
+  出してない locale に固定できない）。結果は `:source`（:cookie /
+  :accept-language / :default）を記録する。
+- `set-cookie-header` — Set-Cookie 属性は**この 1 箇所**で serial 化。各 app が
+  属性を再導出するのを禁止（app-kotoba.cloud の kb_locale と同じ形: Path=/
+  SameSite=Lax/Secure/Max-Age=1y）。
+- `substitute` — build 時生成 document の SSR seam。shitsuke の i18n table
+  （sign_in_i18n 型: source 文字列 → request 時に localize）と対になる。未知の
+  文字列は source のまま通す（翻訳欠落は空白ではなく source で見える — 内容は
+  fail-open、locale **選択**は fail-closed）。
+- `document-variants` — content-addressing 側: 1 route → N locale document、
+  それぞれ別 CID（publish/manifest と同じ自己完結検査を通る）。**identity は
+  per-locale-CID のまま、name/route は locale 非依存、negotiate は edge/host が
+  cookie で行う** — `/ja/` 型の path fork は作らない。
+
+locale negotiation は document ではなく HOST/edge に属する。shinkansen はその
+純粋契約だけを提供する（render はしない、cookie を読む IO もしない）。
+
 ---
 
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 26 tests / 53 assertions, 0 failures, 0 errors
+kbb -M:test        # 34 tests / 75 assertions, 0 failures, 0 errors
 ```
 
 - `same-db-value-same-cid` — 異なる event 経路で同じ db 値 → 同一 CID
