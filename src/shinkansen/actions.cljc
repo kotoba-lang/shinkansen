@@ -49,6 +49,6 @@
       (let [next-db (state-fn db event)
             text ((resolve 'shinkansen.state/db-text) next-db)
             cid (cid-fn text)
-            entry {:db next-db :db-cid cid :prev-cid prev-cid :event event
+            entry {:db next-db :db-cid cid :prev prev-cid :event event
                    :height (or height 0) :text text}]
         {:ok true :entry entry}))))
