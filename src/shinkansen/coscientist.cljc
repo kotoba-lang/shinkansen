@@ -75,6 +75,9 @@
    :pre-overflow
    {:owner :consumer :effort :S
     :change "pre{overflow-x:auto} in the shared stylesheet (a code block that clips mid-line on a phone is unreadable, not just ugly)"}
+   :code-language
+   {:owner :consumer :effort :S
+    :change "emit every code block with cloud-kotoba-dds.code/block (server-side tokens, data-lang + language-<x> markers, a copy control) instead of a bare <pre> — one colour for everything is unreadable, and a block that names no language cannot be tokenized or announced"}
    :chrome-layers
    {:owner :consumer :effort :S
     :change "use the shell pattern (cloud-kotoba-dds.shell): the top bar carries data-chrome=top with position:sticky;top:0;z-index, the account menu carries data-chrome=float with position:absolute;z-index — chrome that scrolls away or reflows the page is not chrome"}})

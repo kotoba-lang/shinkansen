@@ -228,6 +228,23 @@
         "…a rule for some other class does not")
     (is (= 1.0 (:score (axis (audit/score-document {:file "p" :html "<html><head></head><body><main id=\"main\"><p>no code</p></main></body></html>"} ctx) :pre-overflow))))))
 
+(deftest code-blocks-declare-their-language
+  ;; the marker is the contract: a <pre> a person reads names its language
+  ;; on itself (data-lang) or on its <code> child (language-x) — the
+  ;; cloud-kotoba-dds.code/block shape; a hidden <pre> is data, not a block
+  (let [doc (fn [body] (str "<html><head></head><body><main id=\"main\">" body "</main></body></html>"))
+        ctx {:assets #{} :documents #{} :csp :none}
+        score (fn [body] (:score (axis (audit/score-document {:file "k" :html (doc body)} ctx) :code-language)))]
+    (is (= 1.0 (score "<p>no code</p>")) "a document without code has nothing to name")
+    (is (= 1.0 (score "<pre data-lang=\"bash\"><code class=\"language-bash\">curl</code></pre>")) "the block pattern's shape")
+    (is (= 1.0 (score "<pre data-lang=\"text\">plain</pre>")) "data-lang on the pre alone")
+    (is (= 1.0 (score "<pre><code class=\"hl language-json\">{}</code></pre>")) "language-x on the code child alone")
+    (is (= "1 of 1 <pre> block(s) name no language (no data-lang on the pre, no <code class=\"language-…\"> inside) — one colour for everything, nothing to tokenize or announce; emit the block with cloud-kotoba-dds.code/block"
+           (:finding (axis (audit/score-document {:file "k" :html (doc "<pre class=\"kc-docs__config\">export X=1</pre>")} ctx) :code-language))))
+    (is (= 0.0 (score "<pre><code>curl</code></pre>")) "a <code> child with no language class does not count")
+    (is (= 0.5 (score "<pre data-lang=\"bash\">a</pre><pre>b</pre>")) "scored as the share of blocks that name one")
+    (is (= 1.0 (score "<pre id=\"dump\" hidden>{}</pre>")) "a hidden <pre> is data a script fills, not a block a person reads")))
+
 (deftest declared-chrome-keeps-its-layer
   ;; the marker is the contract: an element that says it is the top bar
   ;; must have a sticky/fixed rule addressed to it; a menu that says it
