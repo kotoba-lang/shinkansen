@@ -485,19 +485,29 @@
    {:id :pre-overflow :weight 0.05
     :title "Code blocks can scroll on the phone band"
     :check (fn [{:keys [els css-html css-missing]} _]
-             (let [pres (count (filter #(= "pre" (:tag %)) els))]
+             (let [pres (filter #(= "pre" (:tag %)) els)
+                   ;; a rule reaches the block through the pre tag or one of
+                   ;; its classes (.kc-docs__config{overflow:auto} counts);
+                   ;; an inline style with an overflow-aware white-space
+                   ;; (pre-wrap) needs no scrolling at all
+                   classes (set (mapcat #(str/split (get-in % [:attrs "class"] "") #"\s+") pres))
+                   sel-hits? (fn [sel] (or (re-find #"(?:^|[\s,>])pre\b" sel)
+                                           (some #(and (not (str/blank? %)) (re-find (re-pattern (str "\\." % "(?![\\w-])")) sel)) classes)))
+                   wraps? (every? #(re-find #"white-space\s*:\s*pre-wrap" (get-in % [:attrs "style"] "")) pres)]
                (cond
-                 (zero? pres) {:score 1.0}
+                 (empty? pres) {:score 1.0}
+                 wraps? {:score 1.0}
                  (seq css-missing) {:unmeasured (str "external stylesheet(s) not supplied: " (str/join ", " css-missing) " — the pre overflow rule lives there")}
                  (some (fn [css]
                          (some (fn [[_ sel decls]]
-                                 (and (re-find #"(?:^|[\s,>])pre\b" sel)
-                                      (re-find #"overflow(?:-x)?\s*:\s*(?:auto|scroll)" decls)))
+                                 (and (sel-hits? sel)
+                                      (or (re-find #"overflow(?:-x)?\s*:\s*(?:auto|scroll)" decls)
+                                          (re-find #"white-space\s*:\s*pre-wrap" decls))))
                                (re-seq #"([^{}]+)\{([^{}]*)\}" css)))
                        (style-blocks css-html))
                  {:score 1.0}
                  :else {:score 0.0
-                        :finding (str pres " <pre> block(s) and no pre{overflow-x:auto} rule — on a 390px phone the code clips mid-line and cannot be scrolled")})))}])
+                        :finding (str (count pres) " <pre> block(s) and no overflow-x:auto (or pre-wrap) rule reaching them — on a 390px phone the code clips mid-line and cannot be scrolled")})))}])
 
 ;; --- scoring --------------------------------------------------------------
 
