@@ -424,11 +424,20 @@
 
    {:id :links-resolve :weight 0.12
     :title "Same-origin links resolve to a published document or a declared route"
-    :check (fn [{:keys [els]} {:keys [documents routes]}]
-             (let [hrefs (->> els (by-tag #{"a"}) (keep #(get-in % [:attrs "href"]))
+    :check (fn [{:keys [els]} {:keys [documents routes locale-prefixes]}]
+             (let [;; a host that canonicalises /<locale>/<path> → /<path> (the
+                   ;; shinkansen.locale contract's explicit switch) makes such a
+                   ;; link resolve exactly when its locale-free target does
+                   strip-locale (fn [h]
+                                  (if-let [[_ seg rest] (and (seq locale-prefixes)
+                                                             (re-find #"^/([^/]+)(/.*)?$" h))]
+                                    (if (contains? (set locale-prefixes) seg) (or rest "/") h)
+                                    h))
+                   hrefs (->> els (by-tag #{"a"}) (keep #(get-in % [:attrs "href"]))
                               (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//"))))
                               (map #(first (str/split % #"[?#]" 2)))
                               (remove str/blank?)
+                              (map strip-locale)
                               distinct)]
                (cond
                  (empty? hrefs) {:score 1.0}

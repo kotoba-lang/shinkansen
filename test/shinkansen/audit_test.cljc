@@ -238,3 +238,14 @@
     (is (= "img-src blocks /assets/logo.png — the browser never requests them: the page ships unstyled / inert while its bytes audit clean"
            (:finding (axis (audit/score-document {:file "i" :html doc} (assoc base :assets #{"/assets/logo.png"} :csp "default-src 'none'; style-src 'self'")) :csp-allows-assets))))
     (is (= 1.0 (:score (axis (audit/score-document {:file "i" :html doc} (assoc base :assets #{"/assets/logo.png"} :csp "default-src 'none'; img-src 'self'")) :csp-allows-assets))))))
+
+(deftest locale-prefixed-links-resolve-through-their-target
+  (let [doc "<html><head></head><body><main id=\"main\"><a href=\"/en/docs/\" hreflang=\"en\">English</a><a href=\"/ja/nowhere/\" hreflang=\"ja\">日本語</a><a href=\"/fr/\" hreflang=\"fr\">FR</a></main></body></html>"
+        ctx {:documents #{"/docs/" "/"} :csp :none :locale-prefixes #{"en" "ja" "fr"}}
+        r (audit/score-document {:file "l" :html doc} ctx)]
+    (is (= "links to nothing published: /nowhere/ — a person who follows them gets the 404 page; emit the document or point the link at one that exists"
+           (:finding (axis r :links-resolve)))
+        "/en/docs/ resolves through /docs/, /fr/ through /; /ja/nowhere/ does not")
+    (is (str/starts-with? (:finding (axis (audit/score-document {:file "l" :html doc} (dissoc ctx :locale-prefixes)) :links-resolve))
+                          "links to nothing published: /en/docs/, /ja/nowhere/, /fr/")
+        "without the declaration a prefixed link is just a path that is not published")))
