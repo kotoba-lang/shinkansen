@@ -445,7 +445,8 @@
                        dead (remove resolves? hrefs)]
                    (if (empty? dead)
                      {:score 1.0}
-                     {:score (ratio-score (count dead) 0 0.34)
+                     ;; binary, like :assets-resolve — a 404 is not a degradation
+                     {:score 0.0
                       :finding (str "links to nothing published: " (str/join ", " (take 6 dead))
                                     (when (> (count dead) 6) (str " (+" (- (count dead) 6) ")"))
                                     " — a person who follows them gets the 404 page; emit the document or point the link at one that exists")})))))}
