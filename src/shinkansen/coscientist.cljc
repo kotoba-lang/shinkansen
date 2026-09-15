@@ -65,7 +65,16 @@
     :change "declare inset-inline-start:0 on the fixed nav and offset the content once (body padding OR main margin, not both)"}
    :viewport
    {:owner :consumer :effort :S
-    :change "carry shinkansen.viewport/viewport-meta and a media band ≤ 480px"}})
+    :change "carry shinkansen.viewport/viewport-meta and a media band ≤ 480px"}
+   :links-resolve
+   {:owner :consumer :effort :S
+    :change "emit the document the nav links (or point the link at one that exists); generate the nav from the route tree so an unpublished node cannot be linked"}
+   :csp-allows-assets
+   {:owner :deploy :effort :S
+    :change "the host's Content-Security-Policy carries 'self' in style-src / script-src for the document's own assets; pin the header in the worker smoke"}
+   :pre-overflow
+   {:owner :consumer :effort :S
+    :change "pre{overflow-x:auto} in the shared stylesheet (a code block that clips mid-line on a phone is unreadable, not just ugly)"}})
 
 (defn- pad2 [n] (if (< n 10) (str "0" n) (str n)))
 
