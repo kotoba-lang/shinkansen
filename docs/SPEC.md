@@ -79,7 +79,10 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
     src/shinkansen/publish.cljc  publish manifest（自己完結検査 + scripts/publish-document.cljk の argv）
     src/shinkansen/mcp.cljc      MCP tool 宣言 + dispatch（純粋、handler 注入）
     src/shinkansen/locale.cljc   locale negotiation 契約（cookie ベース、path 非依存、純粋）
-    test/                        34 tests / 75 assertions, 0 fail 0 error（nbb via kbb）
+    src/shinkansen/viewport.cljc multi-screen-size 契約（viewport meta + xs band、静的 audit）
+    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（13 軸、理由付き finding）
+    src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
+    test/                        55 tests / 152 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -125,13 +128,51 @@ cookie を書く**。
 locale negotiation は document ではなく HOST/edge に属する。shinkansen はその
 純粋契約だけを提供する（render はしない、cookie を読む IO もしない）。
 
+### 2.4 UI/UX document 契約は fitness function である（`shinkansen.audit` + `shinkansen.coscientist`）
+
+オーナー指示（2026-09-15、`kotoba.cloud/account` の実測「uiux 品質があまり高くない」）:
+framework の改善は co-scientist の approach で進める —— **測れない品質は劇場**
+（keiei-arbor ADR-2606141500 / isekai.ux ADR-0007 / 90-docs/design-quality と同系）。
+
+`shinkansen.audit/score-document` は emitted HTML 1 枚を 13 軸で採点し、各 miss を
+**理由付きで名指し**する。軸はすべて live page で実測した失敗から起こした
+（2026-09-15 の `/account`: 20.5 / 100、12 finding）:
+
+| 軸 | 実測した失敗 |
+|---|---|
+| `:assets-resolve` | `/js/session.js` が本番で 404 —— document は届くが hydrate せず、全 cell が永遠に「読み込んでいます…」 |
+| `:unique-ids` | `account-refresh`×4 / `account-org-create`×2 —— 2 個目以降は listener の付かない死んだ button |
+| `:idle-pending` | idle document に 12 個の loading cell —— readiness ではなく捏造された progress |
+| `:nav-one-home` | sidebar の `/account`×3、`data-current`×3 |
+| `:nav-before-content` | phone band で 13 link（1,148px）の nav が本文の前に来る |
+| `:skip-link` / `:plain-labels` / `:idle-disabled` / `:repeated-actions` / `:note-density` / `:locale-path-links` / `:fixed-anchor` | 同 page で各 1 件以上 |
+
+- **測れない軸は pass にしない**: asset set を渡さないと `:assets-resolve` は
+  `:unmeasured` に載り平均から除外される（0 でも 1 でもない）。0 枚の audit は
+  `:empty? true` で overall 0。
+- 可視性は構造で判定する（`hidden` 属性、閉じた `<details>` の summary 以外）。
+  idle 系の軸は browser が既定で隠すものを数えない。
+- `shinkansen.coscientist/kaizen-cycle` は finding ごとに hypothesis を 1 本
+  （owner = :consumer / :deploy / :framework、effort）、Elo round-robin（K=32、
+  headroom 主導・決定論的）で rank、low-risk consumer + 全 deploy 行を batch に
+  evolve、iteration 文書を出す。**unmeasured が 1 つでもあれば converged にしない。**
+  `delta` が before/after の軸別の測定 —— roadmap は予測、delta が証明。
+- consumer 側の使い方: emitted document 群 + 公開 asset set を渡して audit し、
+  床（`--min`）を gate にする。deploy 直前に asset set 込みで 1 度走らせること
+  （`:assets-resolve` が deploy 起因の outage を止める唯一の場所）。
+
 ---
 
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 34 tests / 75 assertions, 0 failures, 0 errors
+kbb -M:test        # 55 tests / 152 assertions, 0 failures, 0 errors
 ```
+
+⚠ `test_runner` の `-main` に**列挙されていない** test ns は require されても走らない。
+217c338 の `viewport-test` はこの形で 1 度も走っておらず、走らせると
+`no-xs-band-fails` が落ちた（`:no-xs-band` の比較が逆: 最小 band が 480px **未満**
+のときに flag していた。2026-09-15 修正）。ns を足すときは require と doseq の両方。
 
 - `same-db-value-same-cid` — 異なる event 経路で同じ db 値 → 同一 CID
 - `corrupted-entry-fails-closed` — 改竄 entry は理由を名指して拒否
@@ -140,6 +181,9 @@ kbb -M:test        # 34 tests / 75 assertions, 0 failures, 0 errors
 - `gateway-references-are-not-external` — CID gateway link は違反でない
 - `lake-fetch-refuses-non-cid-fail-closed` — CIDv0 は handler に届く前に拒否
 - `declared-tools-match-dispatch-table` — tools/list と dispatch の表が同型
+- `account-like-document-names-every-failure` — /account の実測失敗 12 種を 1 文書に再現し、各軸の finding 文言を pin
+- `unmeasured-assets-are-not-a-pass` — asset set 無しは `:unmeasured`（score nil、平均から除外）
+- `converged-only-when-clean-and-fully-measured` — unmeasured / 0 枚では converged にならない
 
 ---
 

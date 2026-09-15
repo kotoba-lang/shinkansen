@@ -74,7 +74,7 @@
                    (conj {:id :viewport-missing
                           :why "the document has no device-width viewport meta; on a phone it renders zoomed-out desktop layout"})
                    (let [bands (media-bands html)]
-                     (and (seq bands) (< (first bands) 480)))
+                     (and (seq bands) (> (first bands) 480)))
                    (conj {:id :no-xs-band
                           :why "the smallest media query band starts above 480px; phones have no layout"})
                    (re-find #"body\s*\{[^}]*width\s*:\s*[0-9]{3,}px" html)
