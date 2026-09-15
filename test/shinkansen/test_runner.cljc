@@ -17,7 +17,11 @@
             shinkansen.audit-test
             shinkansen.coscientist-test
             shinkansen.routes-test
-            shinkansen.actions-test))
+            shinkansen.actions-test
+            shinkansen.load-test
+            shinkansen.render-test
+            shinkansen.dev-test
+            shinkansen.adapter-test))
 
 (def totals (atom {:tests 0 :asserts 0 :fail 0 :error 0}))
 (defonce ^:private counts (atom {:n 0}))
@@ -50,7 +54,9 @@
                    'shinkansen.mcp-test 'shinkansen.publish-test
                    'shinkansen.locale-test 'shinkansen.viewport-test
                    'shinkansen.audit-test 'shinkansen.coscientist-test
-                   'shinkansen.routes-test 'shinkansen.actions-test]]
+                   'shinkansen.routes-test 'shinkansen.actions-test
+                   'shinkansen.load-test 'shinkansen.render-test
+                   'shinkansen.dev-test 'shinkansen.adapter-test]]
     (run-tests ns-name))
   (set! t/report orig-report)
   (let [{:keys [tests asserts fail error]} @totals]
