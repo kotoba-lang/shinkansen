@@ -1,11 +1,14 @@
 {:paths ["src"]
- ;; top-level :deps は workspace 内 :local/root のみ（ADR-2608201300）。
- ;; third-party maven / external-git は alias 側にのみ足す。
- :deps {org.clojure/clojure {:mvn/version "1.12.0"}
-        io.github.kotoba-lang/content-address {:local/root "../content-address"}
-        io.github.kotoba-lang/io-ipld {:local/root "../io-ipld"}
-        io.github.kotoba-lang/io-multiformats {:local/root "../io-multiformats"}}
+ ;; No :local/root here. This library is consumed as a :git/sha dependency
+ ;; (app-kotoba-cloud, 2026-09-15) and a consumer's tools.deps resolves a
+ ;; :local/root relative to ITS git cache — "Local lib content-address not
+ ;; found: ~/.gitlibs/libs/io.github.kotoba-lang/shinkansen/content-address"
+ ;; was the measured failure. The former content-address / io-ipld /
+ ;; io-multiformats roots were also unused: no src ns requires them (the CID
+ ;; hash function is injected into shinkansen.state; see jp-go-dds's deps.edn
+ ;; for the same rule stated from the library side). If a real dependency on
+ ;; them appears, declare it as :git/sha.
+ :deps {org.clojure/clojure {:mvn/version "1.12.0"}}
  :aliases
  {:test {:extra-paths ["test"]
          :main-opts ["-m" "shinkansen.test-runner"]}}}
-
