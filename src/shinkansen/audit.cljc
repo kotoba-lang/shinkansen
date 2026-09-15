@@ -50,6 +50,11 @@
     :pre-overflow      a document with <pre> needs a rule that lets code
                        blocks scroll (overflow(-x): auto|scroll) — on the
                        phone band they clip mid-line otherwise
+    :code-language     every visible <pre> names its language (data-lang
+                       on the pre, or <code class=\"language-…\"> inside) —
+                       a block that names none is one colour with nothing
+                       to tokenize or announce; measured 2026-09-15 on
+                       kotoba.cloud/docs: the code area was unreadable
     :chrome-layers     chrome the document DECLARES keeps its layer: an
                        element marked data-chrome=top (a console top bar)
                        has a position:sticky|fixed rule with a block
@@ -534,6 +539,26 @@
                  {:score 1.0}
                  :else {:score 0.0
                         :finding (str (count pres) " <pre> block(s) and no overflow-x:auto (or pre-wrap) rule reaching them — on a 390px phone the code clips mid-line and cannot be scrolled")})))}
+
+   {:id :code-language :weight 0.05
+    :title "Code blocks declare their language"
+    :check (fn [{:keys [els]} _]
+             ;; visible <pre> only: a <pre hidden> (an admin page's JSON dump)
+             ;; is data a script fills, not a block a person reads
+             (let [pres (->> els visible (filter #(= "pre" (:tag %))))
+                   by-order (into {} (map (fn [e] [(:order e) e]) els))
+                   declared? (fn [{:keys [order attrs]}]
+                               (or (contains? attrs "data-lang")
+                                   ;; the <code> child is the next element in document order
+                                   (let [child (get by-order (inc order))]
+                                     (boolean (and child (= "code" (:tag child))
+                                                   (re-find #"(?:^|\s)language-[\w-]+" (get-in child [:attrs "class"] "")))))))
+                   missing (remove declared? pres)]
+               (cond
+                 (empty? pres) {:score 1.0}
+                 (empty? missing) {:score 1.0}
+                 :else {:score (double (/ (- (count pres) (count missing)) (count pres)))
+                        :finding (str (count missing) " of " (count pres) " <pre> block(s) name no language (no data-lang on the pre, no <code class=\"language-…\"> inside) — one colour for everything, nothing to tokenize or announce; emit the block with cloud-kotoba-dds.code/block")})))}
 
    {:id :chrome-layers :weight 0.08
     :title "Declared chrome keeps its layer: a top bar sticks, a menu floats"
