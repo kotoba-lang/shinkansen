@@ -13,7 +13,9 @@
             shinkansen.mcp-test
             shinkansen.publish-test
             shinkansen.locale-test
-            shinkansen.viewport-test))
+            shinkansen.viewport-test
+            shinkansen.routes-test
+            shinkansen.actions-test))
 
 (def totals (atom {:tests 0 :asserts 0 :fail 0 :error 0}))
 (defonce ^:private counts (atom {:n 0}))
