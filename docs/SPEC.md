@@ -162,6 +162,12 @@ framework の改善は co-scientist の approach で進める —— **測れな
   `z-index` の rule が、その marker を名指しで当たっていること。marker が契約であって class 名
   ではない（cloud-kotoba-dds.shell が両方の marker を emit する）。menu は hidden のまま測る
   —— 開く前に層の rule が無ければならない。宣言の無い document は測るものが無く 1.0。
+- **2026-09-15 第 5 周（オーナー実測「code area が見ずらい」）で足した 1 軸**: `:code-language` —
+  可視の `<pre>` は自分の言語を名乗る（`<pre data-lang>` か、子 `<code class="language-x">`。
+  cloud-kotoba-dds.code/block が両方を emit する）。名乗らない block は 1 色の壁で、token 化も
+  読み上げもできない。`<pre hidden>`（script が埋める JSON dump）は data であって block ではなく
+  数えない。score は名乗った block の割合、finding は件数と直し方。`:pre-overflow` はそのまま
+  「scroll か wrap できること」を測り続ける。
 - **1 本の emit tree を複数 host が分け合うとき**、document ごとの `:ctx` を shared ctx に
   merge する（docs host の page は自分の surface の `:documents` に対して link を解決する）。
 - **測れない軸は pass にしない**: asset set を渡さないと `:assets-resolve` は
