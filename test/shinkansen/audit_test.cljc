@@ -228,6 +228,45 @@
         "…a rule for some other class does not")
     (is (= 1.0 (:score (axis (audit/score-document {:file "p" :html "<html><head></head><body><main id=\"main\"><p>no code</p></main></body></html>"} ctx) :pre-overflow))))))
 
+(deftest declared-chrome-keeps-its-layer
+  ;; the marker is the contract: an element that says it is the top bar
+  ;; must have a sticky/fixed rule addressed to it; a menu that says it
+  ;; floats must be positioned with a z-index — and the menu is measured
+  ;; while hidden (it lives behind hidden= / a closed <details>)
+  (let [doc (fn [css body] (str "<html><head><style>" css "</style></head><body><main id=\"main\">" body "</main></body></html>"))
+        ctx {:assets #{} :documents #{} :csp :none}
+        top "<header data-chrome=\"top\">bar</header>"
+        menu "<details><summary>me</summary><div data-chrome=\"float\" hidden>menu</div></details>"]
+    (is (= 1.0 (:score (axis (audit/score-document {:file "c" :html (doc ".x{color:red}" "<p>no chrome</p>")} ctx) :chrome-layers)))
+        "a document that declares no chrome has nothing to keep")
+    (is (= "data-chrome=top has no position:sticky|fixed + top rule addressed to it — the bar scrolls away with the content"
+           (:finding (axis (audit/score-document {:file "c" :html (doc ".kc-topbar{display:flex}" top)} ctx) :chrome-layers))))
+    (is (= 1.0 (:score (axis (audit/score-document {:file "c" :html (doc "[data-chrome=top]{position:sticky;top:0;z-index:20}" top)} ctx) :chrome-layers))))
+    (is (= 1.0 (:score (axis (audit/score-document {:file "c" :html (doc ".kc-topbar[data-chrome=\"top\"]{position:fixed;inset-block-start:0}" top)} ctx) :chrome-layers)))
+        "quoted attribute selector, fixed with a block anchor")
+    (is (= 0.0 (:score (axis (audit/score-document {:file "c" :html (doc "[data-chrome=top]{position:sticky}" top)} ctx) :chrome-layers)))
+        "sticky without a top anchor never sticks")
+    (is (= "data-chrome=float has no position:absolute|fixed + z-index rule addressed to it — the menu opens in flow and pushes the layout apart instead of floating over it"
+           (:finding (axis (audit/score-document {:file "c" :html (doc "[data-chrome=float]{position:static;display:grid}" menu)} ctx) :chrome-layers))))
+    (is (= 1.0 (:score (axis (audit/score-document {:file "c" :html (doc ".ck-account [data-chrome=float]{position:absolute;inset-block-end:100%;z-index:40}" menu)} ctx) :chrome-layers))))
+    (is (str/includes? (:finding (axis (audit/score-document {:file "c" :html (doc ".none{}" (str top menu))} ctx) :chrome-layers)) "; ")
+        "both failures are named in one finding")
+    (is (str/includes? (:why (first (filter #(= :chrome-layers (:axis %))
+                                            (:unmeasured (audit/score-document {:file "c" :html (str "<html><head><link rel=\"stylesheet\" href=\"/css/site.css\"></head><body><main id=\"main\">" top "</main></body></html>")} ctx)))))
+                       "the chrome's position rules live there")
+        "declared chrome with its stylesheet missing is unmeasured, not passed")))
+
+(deftest a-document-may-carry-its-own-ctx
+  ;; one emit tree, two hosts: the docs-host page links /reference/ which
+  ;; exists on ITS surface, not on the apex's document set
+  (let [html "<html><head></head><body><main id=\"main\"><a href=\"/reference/\">ref</a></main></body></html>"
+        shared {:assets #{} :documents #{"/" "/docs/"} :routes [] :csp :none}
+        r (audit/audit [{:file "/docs/x/" :html html}
+                        {:file "/docs/y/" :html html :ctx {:documents #{"/reference/"}}}]
+                       shared)]
+    (is (= 0.0 (:score (axis (get-in r [:documents "/docs/x/"]) :links-resolve))) "against the shared set the link is dead")
+    (is (= 1.0 (:score (axis (get-in r [:documents "/docs/y/"]) :links-resolve))) "against its own surface it resolves")))
+
 (deftest images-are-assets-too
   (let [doc "<html><head></head><body><main id=\"main\"><img src=\"/assets/logo.png\" alt=\"x\"><img src=\"https://cdn.example/x.png\" alt=\"y\"></main></body></html>"
         base {:documents #{} :stylesheets {}}]
