@@ -14,6 +14,8 @@
             shinkansen.publish-test
             shinkansen.locale-test
             shinkansen.viewport-test
+            shinkansen.audit-test
+            shinkansen.coscientist-test
             shinkansen.routes-test
             shinkansen.actions-test))
 
@@ -41,9 +43,14 @@
 (defn -main [& _args]
   (reset! totals {:tests 0 :asserts 0 :fail 0 :error 0})
   (set! t/report counting-report)
+  ;; Every required test ns is listed here too — a ns that is required but
+  ;; not run is theater (viewport-test was, from 217c338 until this commit:
+  ;; its no-xs-band test would have failed on an inverted comparison).
   (doseq [ns-name ['shinkansen.bridge-test 'shinkansen.state-test
                    'shinkansen.mcp-test 'shinkansen.publish-test
-                   'shinkansen.locale-test]]
+                   'shinkansen.locale-test 'shinkansen.viewport-test
+                   'shinkansen.audit-test 'shinkansen.coscientist-test
+                   'shinkansen.routes-test 'shinkansen.actions-test]]
     (run-tests ns-name))
   (set! t/report orig-report)
   (let [{:keys [tests asserts fail error]} @totals]

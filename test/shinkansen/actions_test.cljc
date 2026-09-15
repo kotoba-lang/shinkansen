@@ -36,5 +36,8 @@
                              (ctx (get-in r1 [:entry :db-cid])))]
     (is (:ok r1))
     (is (:ok r2))
+    ;; the chain vocabulary is shinkansen.state's: the link is :prev
+    ;; (SPEC §1.2), not :prev-cid — this test was never run before
+    ;; 2026-09-15 and pinned a key the entry has never carried
     (is (= (get-in r1 [:entry :db-cid])
-           (get-in r2 [:entry :prev-cid])))))
+           (get-in r2 [:entry :prev])))))
