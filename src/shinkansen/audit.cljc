@@ -50,10 +50,20 @@
     :pre-overflow      a document with <pre> needs a rule that lets code
                        blocks scroll (overflow(-x): auto|scroll) — on the
                        phone band they clip mid-line otherwise
+    :chrome-layers     chrome the document DECLARES keeps its layer: an
+                       element marked data-chrome=top (a console top bar)
+                       has a position:sticky|fixed rule with a block
+                       anchor, one marked data-chrome=float (a popover
+                       menu) has position:absolute|fixed with a z-index —
+                       measured 2026-09-15: the top bar scrolled away with
+                       the content and the account menu opened IN FLOW,
+                       pushing the sidebar apart instead of floating over it
 
   Fail-closed: an axis that CANNOT be measured (no asset set supplied for
   :assets-resolve) is reported under :unmeasured and excluded from the
-  score — it is never a silent pass. Pure .cljc, no js/, static analysis
+  score — it is never a silent pass. A document may carry its own :ctx
+  (merged over the shared one) when several hosts share one emit tree —
+  the documents/routes a docs-host page can link to are not the apex's. Pure .cljc, no js/, static analysis
   only: it verifies contract MARKERS in the emitted document, not pixels.
   Visibility is structural (hidden= attribute, closed <details>) — what a
   browser hides by default the idle-state axes do not count."
@@ -514,7 +524,40 @@
                        (style-blocks css-html))
                  {:score 1.0}
                  :else {:score 0.0
-                        :finding (str (count pres) " <pre> block(s) and no overflow-x:auto (or pre-wrap) rule reaching them — on a 390px phone the code clips mid-line and cannot be scrolled")})))}])
+                        :finding (str (count pres) " <pre> block(s) and no overflow-x:auto (or pre-wrap) rule reaching them — on a 390px phone the code clips mid-line and cannot be scrolled")})))}
+
+   {:id :chrome-layers :weight 0.08
+    :title "Declared chrome keeps its layer: a top bar sticks, a menu floats"
+    :check (fn [{:keys [els css-html css-missing]} _]
+             ;; hidden elements count here on purpose: a menu panel lives
+             ;; inside a closed <details> / behind hidden= until it opens,
+             ;; and its layer rule must exist BEFORE it does
+             (let [marked (fn [v] (filter #(= v (get-in % [:attrs "data-chrome"])) els))
+                   tops (marked "top") floats (marked "float")]
+               (cond
+                 (and (empty? tops) (empty? floats)) {:score 1.0}
+                 (seq css-missing)
+                 {:unmeasured (str "external stylesheet(s) not supplied: " (str/join ", " css-missing)
+                                   " — the chrome's position rules live there; pass :css or ctx :stylesheets")}
+                 :else
+                 (let [blocks (mapcat #(re-seq #"([^{}]+)\{([^{}]*)\}" %) (style-blocks css-html))
+                       rule? (fn [marker pred]
+                               (some (fn [[_ sel decls]]
+                                       (and (re-find (re-pattern (str "\\[data-chrome=\"?" marker "\"?\\]")) sel)
+                                            (pred decls)))
+                                     blocks))
+                       top-ok? (rule? "top" #(and (re-find #"position\s*:\s*(?:sticky|fixed)" %)
+                                                  (re-find #"(?:^|;)\s*(?:top|inset-block-start|inset-block|inset)\s*:" %)))
+                       float-ok? (rule? "float" #(and (re-find #"position\s*:\s*(?:absolute|fixed)" %)
+                                                      (re-find #"(?:^|;)\s*z-index\s*:" %)))
+                       bad (cond-> []
+                             (and (seq tops) (not top-ok?))
+                             (conj "data-chrome=top has no position:sticky|fixed + top rule addressed to it — the bar scrolls away with the content")
+                             (and (seq floats) (not float-ok?))
+                             (conj "data-chrome=float has no position:absolute|fixed + z-index rule addressed to it — the menu opens in flow and pushes the layout apart instead of floating over it"))]
+                   (if (empty? bad)
+                     {:score 1.0}
+                     {:score 0.0 :finding (str/join "; " bad)})))))}])
 
 ;; --- scoring --------------------------------------------------------------
 
@@ -559,7 +602,9 @@
                             results))}))
 
 (defn audit
-  "Audit many documents: `docs` is a seq of {:file :html}. Returns
+  "Audit many documents: `docs` is a seq of {:file :html} (+ an optional
+   per-document :ctx merged over the shared ctx — a docs-host page links
+   against its own document set). Returns
    {:overall mean :documents {file -> report} :findings [...] :unmeasured [...]}
    with findings aggregated per axis and sorted by recoverable headroom
    (weight × summed shortfall), heaviest first — the hypothesis seed list
@@ -567,7 +612,7 @@
    with :empty? true — never a clean pass."
   ([docs] (audit docs {}))
   ([docs ctx]
-   (let [reports (into {} (map (fn [d] [(:file d) (score-document d ctx)]) docs))
+   (let [reports (into {} (map (fn [d] [(:file d) (score-document d (merge ctx (:ctx d)))]) docs))
          n (count reports)
          overall (if (zero? n) 0.0 (/ (reduce + (map :overall (vals reports))) n))
          findings (->> axes

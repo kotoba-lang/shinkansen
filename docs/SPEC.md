@@ -155,6 +155,15 @@ framework の改善は co-scientist の approach で進める —— **測れな
   無スタイルで届きながら bytes の audit は 100 だった）、`:pre-overflow`（`<pre>` を持つ
   document に `overflow-x:auto` — phone で code が行の途中で切れる）。ctx に `:documents` /
   `:routes` / `:csp`（文字列、または CSP を配らないことの明示 `:none`）を渡す。
+- **2026-09-15 第 4 周（オーナー実測「右上のヘッダーがスクロールする」「左下のメニューが
+  単に広がる」）で足した 1 軸**: `:chrome-layers` — document が**宣言した** chrome はその層を保つ。
+  `data-chrome=top` を付けた要素（console の top bar）には `position:sticky|fixed` + block anchor
+  の rule が、`data-chrome=float` を付けた要素（popover menu）には `position:absolute|fixed` +
+  `z-index` の rule が、その marker を名指しで当たっていること。marker が契約であって class 名
+  ではない（cloud-kotoba-dds.shell が両方の marker を emit する）。menu は hidden のまま測る
+  —— 開く前に層の rule が無ければならない。宣言の無い document は測るものが無く 1.0。
+- **1 本の emit tree を複数 host が分け合うとき**、document ごとの `:ctx` を shared ctx に
+  merge する（docs host の page は自分の surface の `:documents` に対して link を解決する）。
 - **測れない軸は pass にしない**: asset set を渡さないと `:assets-resolve` は
   `:unmeasured` に載り平均から除外される（0 でも 1 でもない）。0 枚の audit は
   `:empty? true` で overall 0。
