@@ -43,7 +43,7 @@
                        that links /docs/ when no /docs/ was emitted is a
                        404 the framework itself wrote (measured 2026-09-15)
     :csp-allows-assets the response's Content-Security-Policy lets the
-                       document's own same-origin stylesheet/script load —
+                       document's own same-origin stylesheet/script/image load —
                        abc2c4f moved CSS to /css/site.css under a CSP of
                        style-src 'unsafe-inline' and every page shipped
                        unstyled while the bytes audited at 100
@@ -236,7 +236,10 @@
                              (keep (fn [{:keys [tag attrs]}]
                                      (case tag
                                        "script" (get attrs "src")
-                                       "link" (when (re-find #"(?i)stylesheet|modulepreload"
+                                       ;; an image the document shows is part of
+                                       ;; its behaviour too (the brand mark, 2026-09-15)
+                                       "img" (get attrs "src")
+                                       "link" (when (re-find #"(?i)stylesheet|modulepreload|icon"
                                                              (get attrs "rel" ""))
                                                 (get attrs "href"))
                                        nil)))
@@ -458,8 +461,9 @@
                    ;; (fn [file] csp-or-:none) as well as a value
                    csp (if (fn? csp) (csp file) csp)
                    sheets (same-origin-stylesheets els)
-                   scripts (->> els (filter #(= "script" (:tag %))) (keep #(get-in % [:attrs "src"]))
-                                (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//")))))
+                   same-origin? (fn [u] (and (str/starts-with? u "/") (not (str/starts-with? u "//"))))
+                   scripts (->> els (filter #(= "script" (:tag %))) (keep #(get-in % [:attrs "src"])) (filter same-origin?))
+                   images (->> els (filter #(= "img" (:tag %))) (keep #(get-in % [:attrs "src"])) (filter same-origin?))
                    directive (fn [name]
                                (some (fn [d] (let [[k & vs] (str/split (str/trim d) #"\s+")]
                                                (when (= k name) (set vs))))
@@ -468,7 +472,7 @@
                              (let [d (or (directive name) (directive "default-src") #{})]
                                (boolean (or (contains? d "'self'") (contains? d "*")))))]
                (cond
-                 (and (empty? sheets) (empty? scripts)) {:score 1.0}
+                 (and (empty? sheets) (empty? scripts) (empty? images)) {:score 1.0}
                  (nil? csp) {:unmeasured "no :csp supplied — pass the Content-Security-Policy the host serves with this document, or :none when it serves none; a CSP that omits 'self' blocks the document's own stylesheet silently"}
                  (= csp :none) {:score 1.0}
                  :else
@@ -476,7 +480,9 @@
                                  (and (seq sheets) (not (allows? "style-src")))
                                  (conj (str "style-src blocks " (str/join ", " sheets)))
                                  (and (seq scripts) (not (allows? "script-src")))
-                                 (conj (str "script-src blocks " (str/join ", " scripts))))]
+                                 (conj (str "script-src blocks " (str/join ", " scripts)))
+                                 (and (seq images) (not (allows? "img-src")))
+                                 (conj (str "img-src blocks " (str/join ", " (take 3 images)))))]
                    (if (empty? blocked)
                      {:score 1.0}
                      {:score 0.0
