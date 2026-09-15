@@ -82,7 +82,7 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
     src/shinkansen/viewport.cljc multi-screen-size 契約（viewport meta + xs band、静的 audit）
     src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（16 軸、理由付き finding）
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
-    test/                        76 tests / 208 assertions, 0 fail 0 error（nbb via kbb）
+    test/                        76 tests / 211 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -174,7 +174,7 @@ framework の改善は co-scientist の approach で進める —— **測れな
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 76 tests / 208 assertions, 0 failures, 0 errors
+kbb -M:test        # 76 tests / 211 assertions, 0 failures, 0 errors
 ```
 
 ⚠ `test_runner` の `-main` に**列挙されていない** test ns は require されても走らない。

@@ -219,7 +219,11 @@
 (deftest pre-blocks-need-an-overflow-rule
   (let [doc (fn [css] (str "<html><head><style>" css "</style></head><body><main id=\"main\"><pre>code</pre></main></body></html>"))
         ctx {:assets #{} :documents #{} :csp :none}]
-    (is (= "1 <pre> block(s) and no pre{overflow-x:auto} rule — on a 390px phone the code clips mid-line and cannot be scrolled"
+    (is (= "1 <pre> block(s) and no overflow-x:auto (or pre-wrap) rule reaching them — on a 390px phone the code clips mid-line and cannot be scrolled"
            (:finding (axis (audit/score-document {:file "p" :html (doc "pre{padding:1rem}")} ctx) :pre-overflow))))
     (is (= 1.0 (:score (axis (audit/score-document {:file "p" :html (doc ".kc-docs pre{overflow-x:auto}")} ctx) :pre-overflow))))
+    (is (= 1.0 (:score (axis (audit/score-document {:file "p" :html "<html><head><style>.kc-docs__config{overflow:auto}</style></head><body><main id=\"main\"><pre class=\"kc-docs__config\">x</pre></main></body></html>"} ctx) :pre-overflow)))
+        "a rule that reaches the block through its class counts")
+    (is (= 0.0 (:score (axis (audit/score-document {:file "p" :html "<html><head><style>.other{overflow:auto}</style></head><body><main id=\"main\"><pre class=\"kc-docs__config\">x</pre></main></body></html>"} ctx) :pre-overflow)))
+        "…a rule for some other class does not")
     (is (= 1.0 (:score (axis (audit/score-document {:file "p" :html "<html><head></head><body><main id=\"main\"><p>no code</p></main></body></html>"} ctx) :pre-overflow))))))
