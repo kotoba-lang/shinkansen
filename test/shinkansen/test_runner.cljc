@@ -11,7 +11,8 @@
             shinkansen.bridge-test
             shinkansen.state-test
             shinkansen.mcp-test
-            shinkansen.publish-test))
+            shinkansen.publish-test
+            shinkansen.locale-test))
 
 (def totals (atom {:tests 0 :asserts 0 :fail 0 :error 0}))
 (defonce ^:private counts (atom {:n 0}))
@@ -38,7 +39,8 @@
   (reset! totals {:tests 0 :asserts 0 :fail 0 :error 0})
   (set! t/report counting-report)
   (doseq [ns-name ['shinkansen.bridge-test 'shinkansen.state-test
-                   'shinkansen.mcp-test 'shinkansen.publish-test]]
+                   'shinkansen.mcp-test 'shinkansen.publish-test
+                   'shinkansen.locale-test]]
     (run-tests ns-name))
   (set! t/report orig-report)
   (let [{:keys [tests asserts fail error]} @totals]

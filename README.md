@@ -54,7 +54,7 @@ and cannot claim a CID.
 ```bash
 npm test           # nbb runner: requires each test ns explicitly (nbb 1.5.212
                    # no longer auto-requires), prints per-ns + TOTAL summary,
-                   # exits non-zero on failure. 26 tests / 53 assertions.
+                   # exits non-zero on failure. 34 tests / 75 assertions.
 ```
 
 ## MCP stdio server
