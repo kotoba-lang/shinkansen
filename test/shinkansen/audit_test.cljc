@@ -130,3 +130,35 @@
     (is (= ["bad"] (:files (first (:findings r)))))
     (is (apply >= (map :headroom (:findings r))) "sorted by headroom")
     (is (empty? (:unmeasured r)))))
+
+(def external-css-doc
+  ;; the shell alone: the media bands and the position rules live in /css/site.css
+  (str "<!doctype html><html lang=\"ja\"><head>"
+       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">"
+       "<link rel=\"stylesheet\" href=\"/css/site.css\">"
+       "</head><body><main id=\"main\"><h1>x</h1></main></body></html>"))
+
+(def site-css
+  ".kc-sb{position:fixed;inset-block:0;inline-size:15rem}@media(max-width:30rem){.kc-sb{padding:0}}")
+
+(deftest external-stylesheet-not-supplied-is-unmeasured
+  (let [r (audit/score-document {:file "e" :html external-css-doc} {:assets #{"/css/site.css"}})
+        why (set (map :axis (:unmeasured r)))]
+    (is (= #{:viewport :fixed-anchor} why))
+    (is (str/includes? (:why (first (:unmeasured r))) "external stylesheet(s) not supplied: /css/site.css"))
+    (is (nil? (:score (axis r :fixed-anchor))))))
+
+(deftest external-stylesheet-supplied-is-measured
+  (let [r (audit/score-document {:file "e" :html external-css-doc}
+                                {:assets #{"/css/site.css"} :stylesheets {"/css/site.css" site-css}})]
+    (is (empty? (:unmeasured r)))
+    (is (= 1.0 (:score (axis r :viewport))) "the phone band came from the external sheet")
+    (is (str/includes? (:finding (axis r :fixed-anchor)) "position:fixed without left/right/inset-inline on: .kc-sb")
+        "…and so did the unanchored fixed rule")))
+
+(deftest inline-css-part-is-measured-too
+  (let [r (audit/score-document {:file "e" :html external-css-doc :css site-css}
+                                {:assets #{"/css/site.css"}})]
+    ;; :css covers the CSS axes' INPUT, but the link is still unresolved by
+    ;; :stylesheets — the audit says so rather than guessing they are the same
+    (is (= #{:viewport :fixed-anchor} (set (map :axis (:unmeasured r)))))))

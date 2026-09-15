@@ -190,13 +190,16 @@
 (def axes
   [{:id :viewport :weight 0.10
     :title "Viewport meta + phone band (shinkansen.viewport)"
-    :check (fn [{:keys [html file]} _]
-             (let [r (viewport/audit {:file file :html html})
-                   ps (:problems r)]
-               (if (:ok r)
-                 {:score 1.0}
-                 {:score (max 0.0 (- 1.0 (* (/ 1.0 3) (count ps))))
-                  :finding (str/join "; " (map #(str (name (:id %)) ": " (:why %)) ps))})))}
+    :check (fn [{:keys [css-html css-missing file]} _]
+             (if (seq css-missing)
+               {:unmeasured (str "external stylesheet(s) not supplied: " (str/join ", " css-missing)
+                                 " — the media bands live there; pass :css or ctx :stylesheets")}
+               (let [r (viewport/audit {:file file :html css-html})
+                     ps (:problems r)]
+                 (if (:ok r)
+                   {:score 1.0}
+                   {:score (max 0.0 (- 1.0 (* (/ 1.0 3) (count ps))))
+                    :finding (str/join "; " (map #(str (name (:id %)) ": " (:why %)) ps))}))))}
 
    {:id :assets-resolve :weight 0.14
     :title "Referenced same-origin assets exist in the published set"
@@ -362,8 +365,11 @@
 
    {:id :fixed-anchor :weight 0.05
     :title "position:fixed rules declare an inline anchor"
-    :check (fn [{:keys [html]} _]
-             (let [blocks (mapcat #(re-seq #"([^{}]+)\{([^{}]*)\}" %) (style-blocks html))
+    :check (fn [{:keys [css-html css-missing]} _]
+             (if (seq css-missing)
+               {:unmeasured (str "external stylesheet(s) not supplied: " (str/join ", " css-missing)
+                                 " — position rules live there; pass :css or ctx :stylesheets")}
+             (let [blocks (mapcat #(re-seq #"([^{}]+)\{([^{}]*)\}" %) (style-blocks css-html))
                    bad (->> blocks
                             (filter (fn [[_ sel decls]]
                                       (and (re-find #"position\s*:\s*fixed" decls)
@@ -373,19 +379,42 @@
                  {:score 1.0}
                  {:score 0.0
                   :finding (str "position:fixed without left/right/inset-inline on: " (str/join ", " (take 3 bad))
-                                " — the element floats at its static position (inside the body padding), leaving a dead gutter and pushing the content over twice")})))}])
+                                " — the element floats at its static position (inside the body padding), leaving a dead gutter and pushing the content over twice")}))))}])
 
 ;; --- scoring --------------------------------------------------------------
 
+(defn- same-origin-stylesheets [els]
+  (->> els
+       (keep (fn [{:keys [tag attrs]}]
+               (when (and (= tag "link") (re-find #"(?i)stylesheet" (get attrs "rel" "")))
+                 (get attrs "href"))))
+       (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//"))))
+       (map #(first (str/split % #"[?#]" 2)))
+       distinct))
+
 (defn score-document
-  "Score one emitted document. `ctx` may carry :assets (set of same-origin
-   paths that exist in the published set, e.g. #{\"/js/session.js\"}) and
+  "Score one emitted document {:file :html :css?}. `ctx` may carry
+   :assets (set of same-origin paths that exist in the published set,
+   e.g. #{\"/js/session.js\"}), :stylesheets (map of same-origin href →
+   CSS text, so a <link rel=stylesheet href=\"/css/site.css\"> resolves) and
    :locales (set of locale path segments). Returns
    {:file :overall 0..100 :axes [...] :findings [...] :unmeasured [...]}.
    Overall is the weighted mean over MEASURED axes only; unmeasured axes are
-   listed, never scored."
-  [{:keys [html file] :as doc} ctx]
-  (let [doc (assoc doc :els (elements html))
+   listed, never scored. A referenced same-origin stylesheet that neither
+   :css nor :stylesheets supplies makes the CSS-dependent axes unmeasured —
+   the score-site lesson from 90-docs/design-quality iteration 03: scoring
+   the HTML shell alone undercounts silently."
+  [{:keys [html file css] :as doc} ctx]
+  (let [els (elements html)
+        refs (same-origin-stylesheets els)
+        resolved (keep #(get-in ctx [:stylesheets %]) refs)
+        css-missing (vec (remove #(contains? (:stylesheets ctx {}) %) refs))
+        css-text (str/join "\n" (concat (cond (nil? css) [] (string? css) [css] :else css)
+                                        resolved))
+        doc (assoc doc
+                   :els els
+                   :css-missing css-missing
+                   :css-html (str html (when (seq css-text) (str "<style>" css-text "</style>"))))
         results (mapv (fn [{:keys [id title weight check]}]
                         (let [r (check doc ctx)]
                           (merge {:id id :title title :weight weight} r)))
