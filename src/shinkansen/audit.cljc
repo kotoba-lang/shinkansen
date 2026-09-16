@@ -69,6 +69,13 @@
                        dispatch vocabulary, so a control naming an
                        undeclared id is a dead control the surface would
                        refuse by name (shinkansen.interaction, 2026-09-16)
+    :behaviors-delivered every data-behavior marker (jp-go-dds.behavior:
+                       dialog / menu / tabs / disclosure / radiogroup /
+                       toast / combobox) is selected by a shipped script
+                       AND its subtree carries the markup the contract
+                       lists — markup without its runtime, or a runtime
+                       with markup it cannot find, is a dead control that
+                       no class change reveals (2026-09-16)
     :classes-styled    the class names the document puts on its elements
                        are addressed by a rule in the CSS it ships (inline
                        <style> or a supplied same-origin stylesheet) — a
@@ -186,11 +193,15 @@
                                        (:hidden? parent)
                                        in-closed-details?))
                   el {:tag tag :attrs attrs :order n
+                      ;; the orders of every open ancestor — "is this element
+                      ;; inside that root" for the axes that read a subtree
+                      :ancestors (conj (or (:ancestors parent) #{}) (:order parent))
                       :hidden? hidden?
                       :in-nav? (boolean (or (= tag "nav") (:nav? parent)))
                       :in-main? (boolean (or (= tag "main") (:main? parent)))
                       :before-main? (and (not seen-main?) (not= tag "main"))}
-                  frame {:el el :tag tag :text ""
+                  frame {:el el :tag tag :text "" :order n
+                         :ancestors (:ancestors el)
                          :hidden? hidden?
                          :nav? (:in-nav? el)
                          :main? (:in-main? el)
@@ -244,6 +255,38 @@
        (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//"))))
        (map #(first (str/split % #"[?#]" 2)))
        distinct))
+
+(defn- same-origin-scripts [els]
+  (->> els
+       (keep (fn [{:keys [tag attrs]}] (when (= tag "script") (get attrs "src"))))
+       (filter #(and (str/starts-with? % "/") (not (str/starts-with? % "//"))))
+       (map #(first (str/split % #"[?#]" 2)))
+       distinct))
+
+(defn- inline-scripts [html]
+  (map second (re-seq #"(?is)<script\b[^>]*>(.*?)</script>" (str html))))
+
+(def behavior-contract
+  "What a `data-behavior` marker needs on the markup for the runtime to
+   have something to answer — the jp-go-dds.behavior contract, as data.
+   :root is a predicate on the marked element, :inside a seq of
+   [label pred] over the marked element's subtree (each must match at
+   least once)."
+  (let [has? (fn [& ks] (fn [{:keys [attrs]}] (every? #(contains? attrs %) ks)))
+        role? (fn [r & ks] (fn [{:keys [attrs]}] (and (= r (get attrs "role")) (every? #(contains? attrs %) ks))))]
+    {"dialog"     {:root (fn [{:keys [tag attrs]}] (and (= tag "dialog") (or (contains? attrs "aria-labelledby") (contains? attrs "aria-label"))))
+                   :root-why "a <dialog> with aria-labelledby / aria-label"}
+     "menu"       {:inside [["[data-menu-opener][aria-expanded][aria-controls]" (has? "data-menu-opener" "aria-expanded" "aria-controls")]
+                            ["[data-menu-popup][data-chrome=float]" (fn [{:keys [attrs]}] (and (contains? attrs "data-menu-popup") (= "float" (get attrs "data-chrome"))))]]}
+     "tabs"       {:inside [["[role=tablist]" (role? "tablist")]
+                            ["[role=tab][aria-selected]" (role? "tab" "aria-selected")]
+                            ["[role=tabpanel]" (role? "tabpanel")]]}
+     "disclosure" {:root (has? "aria-expanded" "aria-controls") :root-why "aria-expanded + aria-controls on the control"}
+     "radiogroup" {:root (fn [{:keys [attrs]}] (= "radiogroup" (get attrs "role"))) :root-why "role=radiogroup"
+                   :inside [["[role=radio][aria-checked]" (role? "radio" "aria-checked")]]}
+     "toast"      {:root (fn [{:keys [attrs]}] (and (= "status" (get attrs "role")) (contains? attrs "aria-live"))) :root-why "role=status + aria-live"}
+     "combobox"   {:inside [["[role=combobox][aria-expanded][aria-controls][aria-autocomplete]" (role? "combobox" "aria-expanded" "aria-controls" "aria-autocomplete")]
+                            ["[role=listbox]" (role? "listbox")]]}}))
 
 (defn- ratio-score [n allowed step]
   (if (<= n allowed) 1.0 (max 0.0 (- 1.0 (* step (- n allowed))))))
@@ -678,7 +721,49 @@
                       :finding (str (count unstyled) " of " (count used) " class name(s) the document uses have no rule in the CSS it ships: "
                                     (str/join ", " (take 12 unstyled))
                                     (when (> (count unstyled) 12) (str ", +" (- (count unstyled) 12) " more"))
-                                    " — the elements render unstyled (a header that is a bare list of links, a skip link that stays in view); the document was built for a stylesheet it does not ship — emit it through the shared shell or inline the CSS it was written against")})))))}])
+                                    " — the elements render unstyled (a header that is a bare list of links, a skip link that stays in view); the document was built for a stylesheet it does not ship — emit it through the shared shell or inline the CSS it was written against")})))))}
+
+   {:id :behaviors-delivered :weight 0.10
+    :title "Every data-behavior marker has its runtime shipped and its markup complete"
+    ;; The marker is the declaration (jp-go-dds.behavior): a document that
+    ;; says data-behavior=menu has promised a menu that opens on the keyboard
+    ;; and closes on Escape. Two ways to break the promise without any
+    ;; class changing: ship the markup without the runtime (the script file
+    ;; the deploy forgot — the /account lesson of :assets-resolve), or ship
+    ;; the runtime with markup it cannot find (an opener without
+    ;; aria-controls, a popup without the float layer). Both are measured:
+    ;; the runtime's text must select the marker, and the subtree must carry
+    ;; what the contract lists. A document without markers is
+    ;; :not-applicable; markers with a referenced script nobody supplied are
+    ;; :unmeasured.
+    :check (fn [{:keys [els script-text scripts-missing]} _]
+             (let [marked (filter #(get-in % [:attrs "data-behavior"]) els)]
+               (cond
+                 (empty? marked) {:not-applicable "the document declares no data-behavior"}
+                 (seq scripts-missing)
+                 {:unmeasured (str "external script(s) not supplied: " (str/join ", " scripts-missing)
+                                   " — the behavior runtime lives there; pass ctx :scripts")}
+                 :else
+                 (let [problems
+                       (for [{:keys [attrs order] :as el} marked
+                             :let [b (get attrs "data-behavior")
+                                   {:keys [root root-why inside]} (get behavior-contract b)
+                                   subtree (filter #(contains? (:ancestors %) order) els)
+                                   answered? (str/includes? (str script-text) (str "data-behavior=\"" b "\""))
+                                   why (cond-> []
+                                         (not (contains? behavior-contract b)) (conj (str "no such behaviour in the contract"))
+                                         (and (contains? behavior-contract b) (not answered?)) (conj "no shipped script selects it")
+                                         (and root (not (root el))) (conj (str "needs " root-why))
+                                         :always (into (for [[label pred] inside :when (not (some pred subtree))]
+                                                         (str "no " label " inside"))))]
+                             :when (seq why)]
+                         (str "data-behavior=" b (when-let [id (get attrs "id")] (str "#" id)) ": " (str/join ", " why)))
+                       n (count marked) bad (count problems)]
+                   (if (zero? bad)
+                     {:score 1.0}
+                     {:score (double (/ (- n bad) n))
+                      :finding (str bad " of " n " declared behaviour(s) cannot work: " (str/join "; " problems)
+                                    " — a marker is a promise the runtime keeps only when it is shipped and the markup carries what it selects (jp-go-dds.behavior/markers)")})))))}])
 
 ;; --- scoring --------------------------------------------------------------
 
@@ -702,9 +787,15 @@
         css-missing (vec (remove #(contains? (:stylesheets ctx {}) %) refs))
         css-text (str/join "\n" (concat (cond (nil? css) [] (string? css) [css] :else css)
                                         resolved))
+        script-refs (same-origin-scripts els)
+        scripts-missing (vec (remove #(contains? (:scripts ctx {}) %) script-refs))
+        script-text (str/join "\n" (concat (inline-scripts html)
+                                           (keep #(get-in ctx [:scripts %]) script-refs)))
         doc (assoc doc
                    :els els
                    :css-missing css-missing
+                   :scripts-missing scripts-missing
+                   :script-text script-text
                    :css-html (str html (when (seq css-text) (str "<style>" css-text "</style>"))))
         results (mapv (fn [{:keys [id title weight check]}]
                         (let [r (check doc ctx)]
