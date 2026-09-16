@@ -294,7 +294,18 @@
                    :inside [["[role=radio][aria-checked]" (role? "radio" "aria-checked")]]}
      "toast"      {:root (fn [{:keys [attrs]}] (and (= "status" (get attrs "role")) (contains? attrs "aria-live"))) :root-why "role=status + aria-live"}
      "combobox"   {:inside [["[role=combobox][aria-expanded][aria-controls][aria-autocomplete]" (role? "combobox" "aria-expanded" "aria-controls" "aria-autocomplete")]
-                            ["[role=listbox]" (role? "listbox")]]}}))
+                            ["[role=listbox]" (role? "listbox")]]}
+     ;; 2026-09-16: the five behaviours jp-go-dds.behavior 0.2.0 added
+     "popover"    {:inside [["[data-popover-opener][aria-expanded][aria-controls]" (has? "data-popover-opener" "aria-expanded" "aria-controls")]
+                            ["[data-popover-panel][data-chrome=float]" (fn [{:keys [attrs]}] (and (contains? attrs "data-popover-panel") (= "float" (get attrs "data-chrome"))))]]}
+     "tooltip"    {:inside [["[aria-describedby]" (has? "aria-describedby")]
+                            ["[role=tooltip]" (role? "tooltip")]]}
+     "select"     {:inside [["[role=combobox][aria-haspopup=listbox][aria-expanded][aria-controls]" (fn [{:keys [attrs]}] (and (= "combobox" (get attrs "role")) (= "listbox" (get attrs "aria-haspopup")) (contains? attrs "aria-expanded") (contains? attrs "aria-controls")))]
+                            ["[role=listbox]" (role? "listbox")]
+                            ["[role=option][data-value]" (role? "option" "data-value")]]}
+     "slider"     {:inside [["[role=slider][aria-valuemin][aria-valuemax][aria-valuenow]" (role? "slider" "aria-valuemin" "aria-valuemax" "aria-valuenow")]]}
+     "table"      {:inside [["table" (fn [{:keys [tag]}] (= tag "table"))]
+                            ["th[aria-sort] or [data-table-filter]" (fn [{:keys [tag attrs]}] (or (and (= tag "th") (contains? attrs "aria-sort")) (contains? attrs "data-table-filter")))]]}}))
 
 (defn- ratio-score [n allowed step]
   (if (<= n allowed) 1.0 (max 0.0 (- 1.0 (* step (- n allowed))))))

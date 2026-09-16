@@ -347,6 +347,26 @@
                        "the behavior runtime lives there")
         "a referenced script nobody supplied is unmeasured, never a pass")))
 
+(deftest the-five-2026-09-16-behaviours-are-in-the-contract
+  ;; jp-go-dds.behavior 0.2.0 added popover / tooltip / select / slider /
+  ;; table; a document declaring one must be measurable, not "no such
+  ;; behaviour in the contract"
+  (let [runtime "(()=>{document.querySelectorAll('[data-behavior=\"popover\"]');document.querySelectorAll('[data-behavior=\"tooltip\"]');document.querySelectorAll('[data-behavior=\"select\"]');document.querySelectorAll('[data-behavior=\"slider\"]');document.querySelectorAll('[data-behavior=\"table\"]');})();"
+        doc (fn [body] (str "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head><body>" body "<script>" runtime "</script></body></html>"))
+        run (fn [html] (audit/score-document {:html html :path "/x"} {:assets #{} :documents #{"/x"} :csp :none}))
+        popover "<div data-behavior=\"popover\" id=\"po\"><button data-popover-opener aria-expanded=\"false\" aria-controls=\"po-panel\">more</button><div id=\"po-panel\" data-popover-panel data-chrome=\"float\" hidden><p>x</p></div></div>"
+        tooltip "<span data-behavior=\"tooltip\"><button aria-describedby=\"tt\">?</button><span id=\"tt\" role=\"tooltip\" hidden>hint</span></span>"
+        select "<div data-behavior=\"select\"><button role=\"combobox\" aria-haspopup=\"listbox\" aria-expanded=\"false\" aria-controls=\"l\">pick</button><ul id=\"l\" role=\"listbox\" data-chrome=\"float\" hidden><li role=\"presentation\"><div role=\"option\" data-value=\"a\">A</div></li></ul></div>"
+        slider "<div data-behavior=\"slider\"><div data-slider-track><span role=\"slider\" tabindex=\"0\" aria-label=\"v\" aria-valuemin=\"0\" aria-valuemax=\"10\" aria-valuenow=\"3\"></span></div></div>"
+        table "<div data-behavior=\"table\"><table><thead><tr><th aria-sort=\"none\"><button type=\"button\">a</button></th></tr></thead><tbody><tr><td>1</td></tr></tbody></table></div>"]
+    (is (= 1.0 (:score (axis (run (doc (str popover tooltip select slider table))) :behaviors-delivered)))
+        "all five declared and complete")
+    (is (str/includes? (:finding (axis (run (doc "<div data-behavior=\"popover\" id=\"p\"><button data-popover-opener>x</button></div>")) :behaviors-delivered))
+                       "data-behavior=popover#p: no [data-popover-opener][aria-expanded][aria-controls] inside")
+        "an incomplete popover is named by what it lacks")
+    (is (str/includes? (:finding (axis (run (doc "<div data-behavior=\"slider\"><span role=\"slider\"></span></div>")) :behaviors-delivered))
+                       "no [role=slider][aria-valuemin][aria-valuemax][aria-valuenow] inside"))))
+
 (deftest multi-line-script-and-style-bodies-are-opaque
   ;; cljs string/replace drops the dotall flag when it rebuilds the RegExp
   ;; (2026-09-16): a body with a newline was walked as markup while a
