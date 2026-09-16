@@ -230,6 +230,19 @@ framework の改善は co-scientist の approach で進める —— **測れな
   `:not-applicable`、stylesheet が渡されていなければ `:unmeasured`。finding は名前を sorted で
   最大 12 個 + 件数、直し方は「shared shell（site-layout / docs-page）を通すか、書いた CSS を
   inline する」。
+- **2026-09-16（オーナー指示「Radix 相当の behavior 層」）で足した 1 軸**: `:behaviors-delivered` —
+  document が `data-behavior=…`（jp-go-dds.behavior: dialog / menu / tabs / disclosure /
+  radiogroup / toast / combobox）を宣言したら、その marker を select する script が**運ばれて**
+  いて（inline か、ctx `:scripts` で渡された same-origin script）、かつ subtree が契約の markup
+  （menu なら `[data-menu-opener][aria-expanded][aria-controls]` と
+  `[data-menu-popup][data-chrome=float]`、tabs なら tablist / tab[aria-selected] / tabpanel、
+  combobox なら `[role=combobox]` の aria 3 点と `[role=listbox]`、dialog は `<dialog>` +
+  aria-labelledby、toast は role=status + aria-live、radiogroup は role=radiogroup +
+  radio[aria-checked]、disclosure は aria-expanded + aria-controls）を持つこと。runtime 無しの
+  markup（deploy が script を忘れた /account の形）も、markup が足りない runtime も、class は
+  1 つも変わらないまま死んだ control になる —— どちらも finding で名指す。marker の無い
+  document は `:not-applicable`、参照した script が渡されていなければ `:unmeasured`。
+  score は「守られた宣言 / 宣言」。契約表は `shinkansen.audit/behavior-contract`（data）。
 - **1 本の emit tree を複数 host が分け合うとき**、document ごとの `:ctx` を shared ctx に
   merge する（docs host の page は自分の surface の `:documents` に対して link を解決する）。
 - **測れない軸は pass にしない**: asset set を渡さないと `:assets-resolve` は

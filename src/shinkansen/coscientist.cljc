@@ -83,7 +83,10 @@
     :change "use the shell pattern (cloud-kotoba-dds.shell): the top bar carries data-chrome=top with position:sticky;top:0;z-index, the account menu carries data-chrome=float with position:absolute;z-index — chrome that scrolls away or reflows the page is not chrome"}
    :classes-styled
    {:owner :consumer :effort :S
-    :change "emit the document through the shared shell (site-layout / docs-page) so it ships the stylesheet its markup was written against, or inline that CSS; a page that hand-builds its <head> with only the token bridge renders its header as a bare list of links"}})
+    :change "emit the document through the shared shell (site-layout / docs-page) so it ships the stylesheet its markup was written against, or inline that CSS; a page that hand-builds its <head> with only the token bridge renders its header as a bare list of links"}
+   :behaviors-delivered
+   {:owner :consumer :effort :S
+    :change "ship jp-go-dds.behavior/script as one file on every document that carries a data-behavior marker, and emit the marked markup through the jp-go-dds wrappers (menu-list-box / modal-dialog / tab / combobox / toast-region) so the opener, the floating popup, the roles and the aria wiring the runtime selects are all there"}})
 
 (defn- pad2 [n] (if (< n 10) (str "0" n) (str n)))
 

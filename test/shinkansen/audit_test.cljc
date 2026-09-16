@@ -314,6 +314,39 @@
                              :classes-styled)))
         "…and measured through the supplied stylesheet")))
 
+(deftest declared-behaviours-are-delivered
+  ;; the marker is a promise (jp-go-dds.behavior): the runtime must be
+  ;; shipped AND the subtree must carry what the runtime selects
+  (let [runtime "(()=>{document.querySelectorAll('[data-behavior=\"menu\"]');document.querySelectorAll('[data-behavior=\"tabs\"]');})();"
+        menu "<div data-behavior=\"menu\" id=\"m\"><button data-menu-opener aria-expanded=\"false\" aria-controls=\"m-menu\">open</button><div data-menu-popup data-chrome=\"float\" hidden><ul id=\"m-menu\" role=\"menu\"><li role=\"presentation\"><a role=\"menuitem\" href=\"/\">a</a></li></ul></div></div>"
+        doc (fn [body & [head]] (str "<html><head>" (or head "") "</head><body><main id=\"main\">" body "</main></body></html>"))
+        ctx {:assets #{"/js/behavior.js"} :documents #{"/"} :csp :none :scripts {"/js/behavior.js" runtime}}
+        run (fn [html & [c]] (audit/score-document {:file "b" :html html} (or c ctx)))]
+    (is (= "the document declares no data-behavior" (:not-applicable (axis (run (doc "<p>plain</p>")) :behaviors-delivered)))
+        "no marker: not-applicable, neither scored nor listed")
+    (is (= 1.0 (:score (axis (run (doc menu "<script src=\"/js/behavior.js\" defer></script>")) :behaviors-delivered)))
+        "a menu with its runtime shipped as a file and its opener + floating popup")
+    (is (= 1.0 (:score (axis (run (doc (str menu "<script>" runtime "</script>"))) :behaviors-delivered)))
+        "…or inlined")
+    (is (= "1 of 1 declared behaviour(s) cannot work: data-behavior=menu#m: no shipped script selects it — a marker is a promise the runtime keeps only when it is shipped and the markup carries what it selects (jp-go-dds.behavior/markers)"
+           (:finding (axis (run (doc menu)) :behaviors-delivered)))
+        "the markup without its runtime is the /account lesson again")
+    (is (= "1 of 1 declared behaviour(s) cannot work: data-behavior=menu#m: no [data-menu-opener][aria-expanded][aria-controls] inside — a marker is a promise the runtime keeps only when it is shipped and the markup carries what it selects (jp-go-dds.behavior/markers)"
+           (:finding (axis (run (doc (str "<div data-behavior=\"menu\" id=\"m\"><button data-menu-opener>open</button><div data-menu-popup data-chrome=\"float\" hidden></div></div>" "<script>" runtime "</script>"))) :behaviors-delivered)))
+        "the runtime with an opener it cannot wire (no aria-expanded / aria-controls)")
+    (is (str/includes? (:finding (axis (run (doc (str "<div data-behavior=\"tabs\"><div role=\"tablist\"><a role=\"tab\" aria-selected=\"true\">A</a></div></div>" "<script>" runtime "</script>"))) :behaviors-delivered))
+                       "data-behavior=tabs: no [role=tabpanel] inside")
+        "tabs without a panel")
+    (is (= 0.5 (:score (axis (run (doc (str menu "<div data-behavior=\"toast\">x</div>" "<script>" runtime "</script>"))) :behaviors-delivered)))
+        "two markers, one broken (toast without role=status + aria-live, and the runtime does not select it): half")
+    (is (str/includes? (:finding (axis (run (doc (str "<div data-behavior=\"carousel\">x</div>" "<script>" runtime "</script>"))) :behaviors-delivered))
+                       "no such behaviour in the contract")
+        "an unknown marker is named, not ignored")
+    (is (str/includes? (:why (first (filter #(= :behaviors-delivered (:axis %))
+                                            (:unmeasured (run (doc menu "<script src=\"/js/behavior.js\" defer></script>") (dissoc ctx :scripts))))))
+                       "the behavior runtime lives there")
+        "a referenced script nobody supplied is unmeasured, never a pass")))
+
 (deftest a-document-may-carry-its-own-ctx
   ;; one emit tree, two hosts: the docs-host page links /reference/ which
   ;; exists on ITS surface, not on the apex's document set
