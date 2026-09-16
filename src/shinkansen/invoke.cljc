@@ -64,6 +64,7 @@
   Pure .cljc. Nothing here touches the network or the store."
   (:require [clojure.string :as str]
             [shinkansen.actions :as actions]
+            [shinkansen.interaction :as interaction]
             [shinkansen.load :as load]))
 
 (def ^:const kinds
@@ -230,10 +231,16 @@
   whoever started the stdio server), never from the tool arguments — a
   token in every tool call's arguments is a token in every log line."
   [{:keys [artifact event]} {:keys [principal grant]}]
-  {:artifact artifact
-   :principal principal
-   :grant grant
-   :input {:kind :action :event (when (sequential? event) (vec event))}})
+  (let [event (when (sequential? event) (vec event))
+        ;; over the stdio JSON wire the event id is a string; the
+        ;; declaration speaks keywords — one vocabulary (interaction)
+        event (if (string? (first event))
+                (assoc event 0 (interaction/action->event-id (first event)))
+                event)]
+    {:artifact artifact
+     :principal principal
+     :grant grant
+     :input {:kind :action :event event}}))
 
 (defn from-route
   "The HTTP adapter's read half: a resolved route (`routes/resolve-path`)

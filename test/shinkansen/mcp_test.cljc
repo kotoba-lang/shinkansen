@@ -76,7 +76,8 @@
     (is (= "did:key:zAlice" (:principal @seen)))
     (is (= "session-grant" (:grant @seen)))
     (is (= "bafkreia2cc444k5yrw57uhszfrvbri7wee3ljbpb5wfcorykk72kgxhjaq" (:artifact @seen)))
-    (is (= {:kind :action :event ["todo/add" "milk"]} (:input @seen)))))
+    ;; the wire's "todo/add" arrives as :todo/add — one vocabulary with the declaration
+    (is (= {:kind :action :event [:todo/add "milk"]} (:input @seen)))))
 
 (deftest lake-dispatch-declares-the-artifact-required
   (let [t (first (filter #(= "lake_dispatch" (:name %)) (mcp/tools base)))]

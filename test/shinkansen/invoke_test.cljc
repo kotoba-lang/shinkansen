@@ -146,7 +146,7 @@
                              {:principal alice :grant "session-grant"})]
     (is (= alice (:principal env)))
     (is (= "session-grant" (:grant env)))
-    (is (= {:kind :action :event ["cart/add" "milk"]} (:input env)))
+    (is (= {:kind :action :event [:cart/add "milk"]} (:input env)))
     (is (:ok (invoke/check-envelope env)))))
 
 (deftest a-resolved-route-is-a-query-envelope-not-an-execution
@@ -159,3 +159,11 @@
     (is (= {:id "abc123"} (get-in env [:input :params])))
     (is (:ok (invoke/check-envelope env)))
     (is (not (contains? (keys-anywhere env) :path)) "the name does not travel with the invocation")))
+
+(deftest mcp-string-event-ids-meet-the-keyword-declaration
+  ;; over the stdio JSON wire the event head is "todo/add"; the declaration
+  ;; says :todo/add — from-mcp speaks the interaction vocabulary so they meet
+  (let [env (invoke/from-mcp {:artifact cid :event ["cart/add" {:id "x"}]} {:principal alice})]
+    (is (= :cart/add (get-in env [:input :event 0])))
+    (is (:ok (invoke/dispatch decl (assoc env :grant "g") (opts (atom 0) allow))))))
+
