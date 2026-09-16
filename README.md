@@ -48,7 +48,7 @@ and cannot claim a CID.
     src/shinkansen/mcp.cljk        MCP tool surface (stdio JSON-RPC, kotoba-server shape)
     src/shinkansen/interaction.cljc  browser contract (data-action / run stream / hydrate) + one runtime
     src/shinkansen/viewport.cljc   multi-screen-size contract (viewport meta + phone band)
-    src/shinkansen/audit.cljc      UI/UX document contract as a deterministic fitness function (18 axes)
+    src/shinkansen/audit.cljc      UI/UX document contract as a deterministic fitness function (20 axes)
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta kaizen loop, judge = audit
     kotoba/                        .kotoba guests (bridge modules, compiled by amu)
     test/                          kbb -M:test

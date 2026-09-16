@@ -80,7 +80,10 @@
     :change "emit every code block with cloud-kotoba-dds.code/block (server-side tokens, data-lang + language-<x> markers, a copy control) instead of a bare <pre> — one colour for everything is unreadable, and a block that names no language cannot be tokenized or announced"}
    :chrome-layers
    {:owner :consumer :effort :S
-    :change "use the shell pattern (cloud-kotoba-dds.shell): the top bar carries data-chrome=top with position:sticky;top:0;z-index, the account menu carries data-chrome=float with position:absolute;z-index — chrome that scrolls away or reflows the page is not chrome"}})
+    :change "use the shell pattern (cloud-kotoba-dds.shell): the top bar carries data-chrome=top with position:sticky;top:0;z-index, the account menu carries data-chrome=float with position:absolute;z-index — chrome that scrolls away or reflows the page is not chrome"}
+   :classes-styled
+   {:owner :consumer :effort :S
+    :change "emit the document through the shared shell (site-layout / docs-page) so it ships the stylesheet its markup was written against, or inline that CSS; a page that hand-builds its <head> with only the token bridge renders its header as a bare list of links"}})
 
 (defn- pad2 [n] (if (< n 10) (str "0" n) (str n)))
 
