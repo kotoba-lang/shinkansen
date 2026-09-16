@@ -112,12 +112,20 @@
 
 (defn- strip-opaque
   "Remove comments, <script> and <style> bodies (kept separately for the
-  CSS axes) so their text never counts as visible content."
+  CSS axes) so their text never counts as visible content.
+
+  `[\\s\\S]*?`, not a dotall `.*?`: ClojureScript's string/replace rebuilds
+  the RegExp from its source and keeps only the g / i / m / u flags, so a
+  dotall pattern silently stops matching across a newline there while the
+  same literal still matches in re-find. Measured 2026-09-16: a multi-line
+  inline <script> (jp-go-dds.behavior/script) was walked as markup — its
+  comment `<dialog data-behavior=\"dialog\">` became an element the
+  :behaviors-delivered axis then judged. One-line bodies had hidden it."
   [html]
   (-> html
-      (str/replace #"(?s)<!--.*?-->" "")
-      (str/replace #"(?is)(<script\b[^>]*>).*?</script>" "$1</script>")
-      (str/replace #"(?is)(<style\b[^>]*>).*?</style>" "$1</style>")))
+      (str/replace #"<!--[\s\S]*?-->" "")
+      (str/replace #"(?i)(<script\b[^>]*>)[\s\S]*?</script>" "$1</script>")
+      (str/replace #"(?i)(<style\b[^>]*>)[\s\S]*?</style>" "$1</style>")))
 
 (defn- parse-attrs [s]
   (into {}
@@ -221,7 +229,7 @@
              vec)))))
 
 (defn- style-blocks [html]
-  (map second (re-seq #"(?is)<style\b[^>]*>(.*?)</style>" (str html))))
+  (map second (re-seq #"(?i)<style\b[^>]*>([\s\S]*?)</style>" (str html))))
 
 (defn- visible [els] (remove :hidden? els))
 
@@ -264,7 +272,7 @@
        distinct))
 
 (defn- inline-scripts [html]
-  (map second (re-seq #"(?is)<script\b[^>]*>(.*?)</script>" (str html))))
+  (map second (re-seq #"(?i)<script\b[^>]*>([\s\S]*?)</script>" (str html))))
 
 (def behavior-contract
   "What a `data-behavior` marker needs on the markup for the runtime to

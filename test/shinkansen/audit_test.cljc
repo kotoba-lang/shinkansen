@@ -347,6 +347,19 @@
                        "the behavior runtime lives there")
         "a referenced script nobody supplied is unmeasured, never a pass")))
 
+(deftest multi-line-script-and-style-bodies-are-opaque
+  ;; cljs string/replace drops the dotall flag when it rebuilds the RegExp
+  ;; (2026-09-16): a body with a newline was walked as markup while a
+  ;; one-line body was stripped — the failure only a real runtime showed
+  (let [body (str "<main id=\"main\"><p>x</p></main><script>\n/* <dialog data-behavior=\"dialog\"> */\nconst a=1;\nif(a<2&&a>0){}\n</script>"
+                  "<style>\n.x{color:red}\n/* <b>not markup</b> */\n</style>")
+        els (audit/elements (str "<html><head></head><body>" body "</body></html>"))]
+    (is (= ["html" "head" "body" "main" "p" "script" "style"] (mapv :tag els))
+        "nothing inside a multi-line script or style body becomes an element")
+    (is (= "the document declares no data-behavior"
+           (:not-applicable (axis (audit/score-document {:file "m" :html (str "<html><head></head><body>" body "</body></html>")} {:assets #{} :documents #{} :csp :none}) :behaviors-delivered)))
+        "…so a marker mentioned in a script comment is not a declaration")))
+
 (deftest a-document-may-carry-its-own-ctx
   ;; one emit tree, two hosts: the docs-host page links /reference/ which
   ;; exists on ITS surface, not on the apex's document set
