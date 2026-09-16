@@ -48,3 +48,15 @@
   (is (not (:ok (render/isr-manifest-fields {:mode :isr}))))
   (is (:ok (render/isr-manifest-fields {:mode :isr :revalidate-seconds 60})))
   (is (nil? (render/isr-manifest-fields {:mode :ssg}))))
+
+(deftest ssr-answer-is-a-station-when-hashed
+  ;; :ssr is a query (SPEC §1.6): the answer is content, so it has a CID —
+  ;; computed after rendering, never promised before (the :data-cid refusal
+  ;; above stays).
+  (let [doc {:mode :ssr :render-fn (fn [p _] (str "<html>" (:id p) "</html>")) :params {:id "q"}}
+        with (render/render-document (assoc doc :cid-fn (fn [html] (str "cid-" (hash html)))))
+        without (render/render-document doc)]
+    (is (:ok with))
+    (is (= (str "cid-" (hash "<html>q</html>")) (:document-cid with)))
+    (is (not (contains? without :document-cid)) "no hash fn, no claimed identity")))
+

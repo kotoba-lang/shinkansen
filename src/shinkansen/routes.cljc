@@ -12,6 +12,14 @@
   already owns (app-kotoba-cloud's site-layout + app-sidebar) maps onto
   ONE root node's :layout fn; nested sections add child nodes.
 
+  What a path IS (SPEC §1.7, 2026-09-16): a name. `resolve-path` turns a
+  name into WHAT it names — the artifact — and the captured params into a
+  :query. The ok result therefore also carries an `:invocation`
+  (`shinkansen.invoke` envelope, minus principal and grant, which the
+  host adds from the request): the same document is reachable through
+  N names on N origins, and none of them is its identity or its
+  authority. The path never reaches the authorizer.
+
   Pure .cljc. The matcher does not touch the network; the host owns
   fetch/publish. Fail-closed: an unresolvable path returns
   {:ok false :reason ...} with the deepest matched segment named."
@@ -44,7 +52,8 @@
 
 (defn resolve-path
   "Resolve a request path against the route tree. Returns
-    {:ok true :document <leaf> :layouts [layout-fn …] :params {…}}
+    {:ok true :document <leaf> :layouts [layout-fn …] :params {…}
+     :invocation {:artifact <leaf> :input {:kind :query :params {…}}}}
   or {:ok false :reason :no-match :deepest <last matched segment>}.
   Layout fns accumulate root-first so the host can compose them
   outside-in around the document. The walk descends while segments
@@ -66,7 +75,9 @@
             (if (empty? segs)
               (if (:document node)
                 {:ok true :document (:document node)
-                 :layouts layouts :params params}
+                 :layouts layouts :params params
+                 :invocation {:artifact (:document node)
+                              :input {:kind :query :params params}}}
                 {:ok false :reason :no-document-at-node :deepest (last matched)})
               (if-let [child (some #(when (match-node % segs) %) (:children node))]
                 (recur child segs layouts params matched)

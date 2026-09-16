@@ -13,11 +13,18 @@
     lake_list     GET /api/v1/lake/blocks   cursor-paged block listing
     lake_head     GET /api/v1/lake/head     current IPNI advertisement tip
     lake_fetch    GET /ipfs/{cid}           bytes of one block
-    lake_dispatch POST /api/v1/app/dispatch drive the app's state chain
+    lake_dispatch (app)                    drive the app's state chain
+
+  `lake_dispatch` is a TRANSPORT of `shinkansen.invoke` (SPEC §1.6): the
+  tool arguments name the artifact and the event, the SESSION names the
+  principal and carries the grant (ctx :principal / :grant, bound once by
+  whoever started the server), and the handler receives one envelope.
+  The agent's token is never a tool argument — an argument is a log line.
 
   Every tool answers {:ok bool …} and NEVER throws: an MCP tool result
   that throws surfaces as a protocol error, not a tool error."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [shinkansen.invoke :as invoke]))
 
 (def ^:const protocol-version "2025-06-18")
 
@@ -47,9 +54,11 @@
                   "format" {:type "string" :enum ["meta" "text"] :description "meta = metadata only; text = decode as UTF-8 text"}}})
    (tool-def
     "lake_dispatch"
-    "Dispatch an event to the app's content-addressed state chain. Returns the new db value, its CID, and the chain entry."
+    "Dispatch an event to an app's content-addressed state chain. The app is named by its artifact CID; the caller's identity and grant come from this session, not from the arguments. Returns the new db value, its CID, and the chain entry — or the refusal, by name."
     {:type "object"
-     :properties {"event" {:type "array" :description "re-frame event vector, e.g. [\"todo/add\" \"milk\"]"}}})])
+     :properties {"artifact" {:type "string" :description "the app's CIDv1 base32 label (baf…) — WHAT is being driven"}
+                  "event" {:type "array" :description "re-frame event vector, e.g. [\"todo/add\" \"milk\"]"}}
+     :required ["artifact" "event"]})])
 
 (defn- lake-url [base path]
   (str (str/replace base #"/*$" "") path))
@@ -59,10 +68,14 @@
     {:lake-list (fn [{:keys [limit cursor]}) → {:ok …}]
      :lake-head (fn [] → …)
      :lake-fetch (fn [{:keys [cid format]}) → …
-     :lake-dispatch (fn [{:keys [event]}) → …}
-  A missing handler answers {:ok false :error \"tool not implemented\"} —
-  declared but unimplemented is a caller bug and must be visible."
-  [tool-name args handlers]
+     :lake-dispatch (fn [envelope]) → …}      a shinkansen.invoke envelope
+  `session` is {:principal did :grant …} — the identity the server was
+  started with; `lake_dispatch` folds it into the envelope
+  (`invoke/from-mcp`). A missing handler answers
+  {:ok false :error \"tool not implemented\"} — declared but unimplemented
+  is a caller bug and must be visible."
+  ([tool-name args handlers] (handle-call tool-name args handlers {}))
+  ([tool-name args handlers session]
   (case tool-name
     "lake_list" ((or (:lake-list handlers) (fn [_] {:ok false :error "tool not implemented"}))
                  (update args :limit #(or % 50)))
@@ -73,8 +86,9 @@
                      (not (re-matches #"bafk[a-z2-7]+" (str cid)))
                      {:ok false :error "cid must be a CIDv1 base32 label (bafk…)"}
                      :else ((or (:lake-fetch handlers) (fn [_] {:ok false :error "tool not implemented"})) args)))
-    "lake_dispatch" ((or (:lake-dispatch handlers) (fn [_] {:ok false :error "tool not implemented"})) args)
-    {:ok false :error (str "unknown tool: " tool-name)}))
+    "lake_dispatch" ((or (:lake-dispatch handlers) (fn [_] {:ok false :error "tool not implemented"}))
+                     (invoke/from-mcp args session))
+    {:ok false :error (str "unknown tool: " tool-name)})))
 
 (defn- json-rpc-ok [id result]
   {:jsonrpc "2.0" :id id :result result})
@@ -100,7 +114,8 @@
       (let [params (:params req)
             tool (:name params)
             args (or (:arguments params) {})
-            result (handle-call tool args (:handlers ctx))]
+            result (handle-call tool args (:handlers ctx)
+                                (select-keys ctx [:principal :grant]))]
         ;; A handler may answer synchronously or with a Promise (the live
         ;; stdio handlers fetch over HTTP). Flatten to a promise of a
         ;; response either way — the caller decides how to await it.

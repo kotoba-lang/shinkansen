@@ -14,7 +14,15 @@
 
   The mode is DECLARED, checked against what the document actually
   carries, and fail-closed: :ssr without a :render-fn is a manifest
-  error, not a runtime 500. Pure .cljc.")
+  error, not a runtime 500.
+
+  An :ssr render is a QUERY (SPEC §1.6): the route's params are the
+  input, the render fn is the artifact's answer, and the answer is content
+  like everything else — when a `cid-fn` is supplied the result carries
+  `:document-cid`, a station the edge may serve on the bytes plane. What
+  :ssr cannot do is know that CID BEFORE rendering, which is why a
+  pre-declared :data-cid on an :ssr document is refused: the identity of
+  a query's answer is computed, never promised. Pure .cljc.")
 
 (def ^:const valid-modes #{:ssg :ssr :isr})
 
@@ -43,13 +51,15 @@
   (params, data). Fail-closed: an :ssr render that throws answers
   {:ok false :reason :render-failed :error ...} — a rendering error is a
   named error, never a half-HTML response."
-  [{:keys [mode render-fn html params data]}]
+  [{:keys [mode render-fn html params data cid-fn]}]
   (let [chk (check-mode {:mode mode :render-fn render-fn})]
     (if-not (:ok chk)
       chk
       (case (:mode chk)
         :ssr (try
-               {:ok true :mode :ssr :html (render-fn (or params {}) data)}
+               (let [out (render-fn (or params {}) data)]
+                 (cond-> {:ok true :mode :ssr :html out}
+                   (fn? cid-fn) (assoc :document-cid (cid-fn out))))
                (catch :default e
                  {:ok false :reason :render-failed
                   :error (or (ex-message e) (str e))}))

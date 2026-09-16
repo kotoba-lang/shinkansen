@@ -5,7 +5,7 @@ Kotoba stack 用 content-addressed web framework である。** 名前が可変�
 アプリの要素は 1 つも置かない — link は CID、state 遷移は CID、agent が UI を
 取るのも browser と同じ address である。
 
-Status: R0（2026-09-13、ADR-2609131808 accepted）。
+Status: R0（2026-09-13、ADR-2609131808 accepted）。2026-09-16 設計見直し（§1.5–1.8、`shinkansen.invoke`）。
 
 ---
 
@@ -66,10 +66,128 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
 | `lake_list` | GET /api/v1/lake/blocks | cursor page で最近の block 一覧（CID・size・gateway URL） |
 | `lake_head` | GET /api/v1/lake/head | 現在の IPNI advertisement tip |
 | `lake_fetch` | GET /ipfs/{cid} | 1 block の取得（meta または text） |
-| `lake_dispatch` | （app 側） | state chain への event dispatch、新しい db 値と CID を返す |
+| `lake_dispatch` | （app 側） | `artifact` CID の state chain への event dispatch。**§1.6 の envelope の transport** —— principal と grant は tool 引数ではなく session（server 起動時に束ねる ctx）から来る |
 
 失敗は throw しない: `{:ok false :error <理由>}` を返す。CIDv0（`Qm…`）は
 `lake_fetch` が理由を名指して拒否する。
+
+### 1.5 5 つの軸は直交する —— DID / CID / origin / grant / effect（2026-09-16 設計見直し）
+
+オーナーとの設計対話（docs./apps./console. の origin 分離 → DID + Biscuit → CID first、
+2026-09-16）から framework の primitive を整理し直した。1 つの request が立てる問いは 5 つで、
+それぞれ**別の機構**が答える。どれも他の代用にならない:
+
+    who    principal   DID            誰が求めているか
+    what   artifact    CID            正確にどの計算か（identity、§1.1）
+    where  origin      Web origin     どこに隔離されているか（Location、§1.1）
+    may    grant       Biscuit        何をしてよいと**委譲された**か（上限であって authority ではない）
+    do     effect      effect request 実際に起こそうとしている外界への作用
+
+見直し前の shinkansen は what / where を持ち、who / may を持たず、do を名付けていなかった。
+`actions/dispatch` は宣言と shape を検査するだけで、`lake_dispatch` は event 以外を受け取らない ——
+**binding に届いたことが authority だった。** これは capability-semantics
+（`kotoba-lang/lang/capability-semantics.edn`）の `:plain-resource-is-not-authority` と
+`:missing-grant :deny` を framework 自身が破っている形。
+
+決定:
+
+- **origin は containment であって proof ではない。** `{cid}.ipfs.kotobase.net` は document ごとに
+  別 origin（storage / SW / DOM が隔離される）、`{name}.itonami.app` は人が入る名前。どちらの
+  hostname も identity ではなく authority でもない。**authorizer への入力に origin / path / host は
+  含めない**（`invoke_test/the-authorizer-sees-the-effect-and-nothing-about-where-the-call-came-from`
+  が受け取る key 集合を `#{:principal :artifact :grant :effect}` に pin）。
+- **grant は上限、authority は authorizer の決定。** framework は Biscuit を parse しない・署名を
+  検証しない・policy を持たない。それは `kotoba-lang/authority`（束）と `org-biscuitsec` の
+  `biscuit.kotoba-logic/authorize`（五源 join: amu ∧ vm ∧ grant ∧ policy ∧ runtime）の仕事で、host が
+  `authorize-fn` として束ねる。framework が持つのは **seam と fail-closed**: authorizer が無ければ
+  `:no-authorizer`、答えが decision の形（`:ok` を持つ map）でなければ
+  `:authorizer-answer-not-a-decision`、否なら `:denied` + authorizer の理由。**nil は allow に
+  pun しない**（kotoba-lang/authority README の「missing policy が public database になった」形）。
+- **shinkansen 自身が行う effect は 1 つ —— chain append。** `:action` は
+  `{:effect :chain/append :resource "kotoba://app/<cid>/chain" :event […]}` を求め、`:query` は
+  `:app/query`、`:event` は `:app/assert`（`kotoba://app/<cid>/events/<source>`）。resource は
+  `kotoba://` scope なので authority の segment 束が新 scheme 無しで covers? を答える。guest の
+  re-frame effects（`:fx`）は従来どおり host の権限（§1.3、ADR D4 不変）。
+- **chain entry は who と on-whose-decision を記録し、grant は記録しない。** entry に `:principal`
+  と `:receipt`（authorizer の答えから `:grant` / `:token` を除いたもの）が載る。bearer を public な
+  CAR に載せない（capability-semantics `:raw-bearer-in-public-car :forbidden`）。
+  ⚠ 既知の限界（見直し前から）: chain の検証は各 entry の `:db-cid` = hash(`:text`) だけで、
+  `:prev` / `:event` / `:principal` は hash に含まれない。entry 単位の改竄耐性は authorizer の
+  receipt（署名付き）側の仕事であり、この framework の chain は state identity の chain。
+
+### 1.6 invocation は 1 つの形 —— query / action / event、URL は transport（`shinkansen.invoke`）
+
+見直し前は同じことに 3 つの語彙があった: `shinkansen.actions` は intent を event と呼び、
+`shinkansen.load` は query を load と呼び、MCP tool と（文書にあって未実装の）`POST /dispatch` は
+それぞれ自分の body で dispatch を encode していた。protocol semantic は 1 つの envelope:
+
+    {:artifact  "bafk…"                        CID（必須）
+     :principal "did:key:z6Mk…"                DID（wire 上は任意。要るかは authorizer が決める）
+     :grant     <opaque>                       提示された委譲（wire 上は Biscuit）。framework には不透明
+     :input     {:kind :query  :params {…}}          ask   — 値を答える
+                {:kind :action :event  [id …]}       intend — re-frame event を chain へ
+                {:kind :event  :source s :frame f}   happened — 外界の事実を app へ assert}
+
+| kind | 対応する既存 seam | effect | 答え |
+|---|---|---|---|
+| `:query` | `load/run-load`、`render :ssr` | `:app/query` | station（data CID / document CID） |
+| `:action` | `actions/dispatch` → `state/chain-entry` | `:chain/append` | 新 db 値と CID、chain entry |
+| `:event` | host が適用（`streamRun` の frame、webhook） | `:app/assert` | 適用結果（host） |
+
+- 順序は **check-envelope → effect-request → authorize → 既存の純粋 seam**。各段が理由を名指して
+  止まる（`:cidv0-refused` / `:unknown-kind` / `:action-needs-event` / `:principal-not-a-did` …）。
+  defect のある envelope は authorizer に届かない（`invoke_test` が呼出回数 0 を pin）。
+- **kind は動詞を跨がない**: `invoke/dispatch` に `:query` を渡せば `:not-an-action`、`invoke/query` に
+  `:action` を渡せば `:not-a-query`。query は append しないし event は intent ではない。
+- **re-frame の語彙は変えない。** shitsuke の guest が言う「event」は本 SPEC の `:action` の中身
+  （`:input :event`）で、guest の「effect」（`:fx`）は host へ出る作用。chain entry の `:event` は
+  従来どおり re-frame event を指す。名前を変えるのではなく、envelope の `:kind` が層を言う。
+- **transport は adapter**: `invoke/from-mcp`（`lake_dispatch` 引数 + session identity → envelope。
+  引数に紛れた `principal` / `grant` は**無視される**）、`invoke/from-route`（解決した route → `:query`
+  envelope。path は envelope に乗らない）。HTTP の `POST <api>/invoke` は同じ body を運ぶ host の
+  binding で、URL は semantic ではない。browser runtime（§2.3b）の `shinkansen.dispatch(id, params)` は
+  host handler を呼ぶ**ローカル**の action であり、chain へ届けるのは host handler が envelope を組んで
+  送る責任 —— `{cid}.ipfs.*` origin から API は cross-origin なので **grant は header / body で明示的に
+  運び、ambient cookie を authority にしない**。
+
+### 1.7 path は参照、URL は view —— 「Google に合わせない」
+
+`routes/resolve-path` は **name → artifact** の resolver であり、その答えは document でもあり
+`:invocation {:artifact <leaf> :input {:kind :query :params …}}` でもある（同じ ok 結果に両方載る）。
+同じ CID は N 個の name / N 個の origin から届いてよく、どの URL もその identity ではない:
+
+    resolve(origin, path) → CID          URL = render(origin, CID, context)
+
+- **canonical は CID。** `https://apps.example/<cid>` も `ipfs://<cid>` も `kotoba run <cid>` も
+  同じ計算の projection。framework は URL を canonical として記録しない（§1.1「app が記録する唯一の
+  アドレスは identity」の言い直し）。
+- **`:ssr` は query。** route の params が入力、render fn が artifact の答え、答えは content ——
+  `cid-fn` を渡せば `:document-cid` が付く（`render_test/ssr-answer-is-a-station-when-hashed`）。
+  `:ssr` が出来ないのは CID を**描く前に**知ること。だから `:ssr` に `:data-cid` を予め宣言するのは
+  引き続き `:ssr-with-data-cid` で拒否する（identity は計算されるもので、約束するものではない）。
+- **path に持たせる役割は 3 つだけ**: human alias / resolver 入力 / UI navigation state。identity・
+  authority・execution semantics は持たせない。`/apps/foo/edit` の `edit` は capability ではなく
+  表示。`:links-resolve` / `:locale-path-links` の audit 軸は projection の整合性検査であって、URL を
+  identity と認めるものではない。
+- **検索エンジン向けの hypertext（`docs.kotoba.cloud/...`）は上の層。** 下の層（CID / DID / grant /
+  invocation / effect）を歪めない。二層で、上が下に従属する。
+
+### 1.8 origin 分離の代価 —— preference は name origin の性質
+
+「別の家」の隔離は security には利くが、**preference にはそのまま効く**: `{cid}.ipfs.*` の
+document は 1 つずつ別 origin なので、theme の `localStorage["kotoba-theme"]`（§2.3c）も locale の
+cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CID を跨いで持ち越されない。
+これは bug ではなく origin 分離の定義そのもの。従って:
+
+- **theme / locale の記憶は entry（name）origin の性質**（`{name}.itonami.app`）。bytes origin
+  （`{cid}.ipfs.*`）で開いた document の既定は theme = `system`（storage 無し = system、§2.3c の
+  契約どおり）、locale = Accept-Language（cookie 無し = negotiate の第 2 優先）。
+- **cookie は host-only。** `locale/defaults` の `:cookie-attrs` に `:domain` は無い（`Domain=` を
+  省いた cookie は host-only）。`Domain=kotoba.cloud` のような parent-domain cookie は分離を壊すので
+  framework default にしない。`Path=` は security boundary ではない。
+- **wildcard trust を書かない**: CSP や CORS の allow list に `*.kotobase.net` を入れると 1 つの
+  subdomain takeover が全 document に及ぶ。`:csp-allows-assets` 軸（§2.4）は document 自身の asset を
+  許すかを見る軸であり、wildcard を推奨する軸ではない。
 
 ---
 
@@ -84,7 +202,12 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
     src/shinkansen/interaction.cljc browser 側の契約（data-action / data-params、run stream、hydrate、theme、locale）+ 1 本の runtime
     src/shinkansen/theme.cljc    light / dark / system の契約（storage、属性、head-script、theme/set）
-    test/                        76 tests / 211 assertions, 0 fail 0 error（nbb via kbb）
+    src/shinkansen/invoke.cljc   invocation envelope（query / action / event）+ authority seam（authorize-fn 注入、無ければ拒否）+ MCP / route adapter
+    src/shinkansen/routes.cljc   name → artifact の resolver（ok 結果に :invocation を同梱）
+    src/shinkansen/actions.cljc  post-authorization の宣言検査 + chain entry（binding は invoke 経由でここに来る）
+    src/shinkansen/load.cljc     query の答え = data station（EDN text の CID）
+    src/shinkansen/render.cljc   :ssg / :ssr / :isr。:ssr は query、cid-fn で :document-cid
+    test/                        136 tests / 469 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -99,6 +222,10 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
 - `tools/list` → 4 tool の declaration（`base-url` は注入、test は任意 host に向けられる）
 - `tools/call` → handler dispatch。handler 無し tool は
   `{:ok false :error "tool not implemented"}` — **宣言済みで実装無しは見える**（silent skip しない）
+- `lake_dispatch` は `artifact` + `event` を必須引数とし、handler には `invoke/from-mcp` が組んだ
+  envelope が 1 つ渡る。principal / grant は ctx（session）から折り込まれ、引数の同名 key は無視される
+  （`mcp_test/lake-dispatch-hands-the-handler-one-envelope-with-the-session-identity`）。tool schema に
+  `grant` は無い（`lake-dispatch-declares-the-artifact-required`）。
 - 未知 method → JSON-RPC error `-32601`
 - **declaration と dispatch 表の同型 test** が「tools/list に載っているのに呼べない」
   tool の発生を落ちるようにしている
@@ -287,7 +414,7 @@ framework の改善は co-scientist の approach で進める —— **測れな
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 76 tests / 211 assertions, 0 failures, 0 errors
+kbb -M:test        # 136 tests / 469 assertions, 0 failures, 0 errors
 ```
 
 ⚠ `test_runner` の `-main` に**列挙されていない** test ns は require されても走らない。
@@ -305,6 +432,18 @@ kbb -M:test        # 76 tests / 211 assertions, 0 failures, 0 errors
 - `account-like-document-names-every-failure` — /account の実測失敗 12 種を 1 文書に再現し、各軸の finding 文言を pin
 - `unmeasured-assets-are-not-a-pass` — asset set 無しは `:unmeasured`（score nil、平均から除外）
 - `converged-only-when-clean-and-fully-measured` — unmeasured / 0 枚では converged にならない
+- `no-authorizer-is-a-refusal-not-a-pass` — authorize-fn 無し → `:no-authorizer`、guest step は 0 回
+- `an-answer-that-is-not-a-decision-is-a-refusal` — authorizer が nil / `:ok` 無し map → `:authorizer-answer-not-a-decision`
+- `denied-names-the-authorizer-reason-and-appends-nothing` — 否 → `:denied` + authorizer の理由、step 0 回
+- `allowed-appends-and-records-who-and-on-whose-decision-never-the-grant` — entry に `:principal` / `:receipt`、結果のどこにも `:grant` は無い
+- `the-authorizer-sees-the-effect-and-nothing-about-where-the-call-came-from` — authorizer の入力 key は `#{:principal :artifact :grant :effect}` のみ
+- `envelope-defects-are-named-before-the-authorizer-is-asked` — 9 種の defect を理由付きで拒否し、authorizer 呼出 0 回。境界側: 3 kind の正しい envelope は届く（3 回）
+- `mcp-identity-comes-from-the-session-not-the-arguments` — 引数に紛れた principal / grant は無視
+- `a-resolved-route-is-a-query-envelope-not-an-execution` — path は envelope に乗らない
+
+壊して確かめた（2026-09-16）: `invoke/authorize` の「authorize-fn 無し」を allow に書き換えると
+`no-authorizer-is-a-refusal-not-a-pass` と `a-query-goes-through-the-same-seam-and-answers-a-station`
+が落ちる（exit 1、4 failures）。無改変で exit 0。
 
 ---
 
@@ -313,7 +452,8 @@ kbb -M:test        # 76 tests / 211 assertions, 0 failures, 0 errors
 **使う**: shitsuke（view/state の .kotoba guest 群、変更しない）、
 content-address / io-ipld / io-multiformats（hash・CID）、
 `scripts/publish-document.cljk`（2 面publish の実体）、
-kotoba-server `word mcp`（MCP stdio の形）。
+kotoba-server `word mcp`（MCP stdio の形）、
+`kotoba-lang/authority` + `org-biscuitsec`（authorize-fn の実体。framework は seam だけ）。
 
 **使わない（恒久）**: Svelte/React（ADR-2608260900）、guest からの js 操作、
 DOM capability wire の新設、mutable naming に載せる document（IPNS/DNSLink は
@@ -337,12 +477,16 @@ visual shell を複製しないこと (ADR-2609092600 :document の自己完結�
 「asset を document に同梱する」ことであり「shell を再実装する」ことではない)。
 
 ## 6. 次の一段（未実施、実測の順）
-1. **guest bridge**: shitsuke の `reframe_core.kotoba` を shinkansen の state
-   chain に繋ぐ `.kotoba` bridge module（db 値の EDN text を guest から出す）
-2. **yataverse lake index への着地**: worktree
+1. **yataverse lake index への着地**: worktree
    `net-kotobase-ipfs-yataverse-index` に着手済みの top page / `/api/v1/lake/*`
    を shinkansen publish 経由に置き換え
-3. **MCP stdio server**: `mcp.cljc` の dispatch を stdin/stdout loop に載せる
-4. **west pin**: `west-entry-add`（entry 名は repo 名と一致させる規約。既存
-   cloud-itonami/shinkansen と entry 名が衝突するため、repo 名と west entry 名の
-   整合を west-entry-add 実行時に要確認 — 未着手の既知残）
+2. **authorize-fn の実体を 1 本束ねる**: `biscuit.kotoba-logic/authorize`（五源 join）を
+   `invoke` の seam に繋ぎ、`lake_dispatch` の R0 refusal を本物の decision に置き換える。
+   session の principal は CACAO（人）/ DID（agent）から、grant は `auth.kotobase.net/v1/biscuit/token`
+   から。**framework 側に Biscuit parser を置かない。**
+3. **`POST <api>/invoke` の host binding**: cloud-kotoba/app-kotoba-cloud で envelope を受け、
+   `Authorization` header の grant を envelope に折り込む（cookie は使わない、§1.6）。
+4. **chain entry の receipt 署名**: §1.5 の既知の限界（`:prev` / `:event` / `:principal` が hash 外）を
+   authorizer の署名付き receipt で閉じるか、entry 全体を hash するかを実測して決める。
+5. ~~guest bridge~~（`bridge.cljc` 着地済み）、~~MCP stdio loop~~（`stdio.cljc` 着地済み）、
+   ~~west pin~~（登録済み、pin は各 PR で前進）

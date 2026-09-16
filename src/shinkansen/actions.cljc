@@ -7,13 +7,21 @@
 
     {:events {:cart/add {:validate (fn [event] …)}}}
 
-  → POST /dispatch {event: [::cart/add {:id x}]}
-     → validate → state/chain-entry → {:ok true :db-cid … :height …}
+  → {:kind :action :event [::cart/add {:id x}]}   (a shinkansen.invoke envelope)
+     → authorize (invoke) → validate → state/chain-entry
+     → {:ok true :db-cid … :height …}
 
   Fail-closed: an undeclared event, or one failing its :validate fn, is
   refused BY NAME before any chain entry is built. The response carries
   the new db CID so the caller (browser or agent) can verify and follow
   the chain — one surface, both clients.
+
+  This namespace is the POST-authorization step. It validates shape and
+  declaration, not authority: a binding (HTTP route, MCP tool, CLI) must
+  reach it through `shinkansen.invoke/dispatch`, which decides
+  {:principal :artifact :grant :effect} first and refuses without an
+  authorizer. Calling this directly from a binding is the hazard SPEC
+  §1.5 names — reaching the binding becomes the authority.
 
   Pure .cljc. The host owns the HTTP binding and persistence; this owns
   the declaration → validation → chain-entry seam.")

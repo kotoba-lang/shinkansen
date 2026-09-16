@@ -58,3 +58,29 @@
   (let [declared (set (map :name (mcp/tools base)))
         dispatched #{"lake_list" "lake_head" "lake_fetch" "lake_dispatch"}]
     (is (= declared dispatched))))
+
+(deftest lake-dispatch-hands-the-handler-one-envelope-with-the-session-identity
+  ;; the principal and the grant are the SESSION's (ctx), the artifact and
+  ;; the event are the call's — and a principal smuggled into the arguments
+  ;; does not win.
+  (let [seen (atom nil)
+        resp (mcp/handle-request
+              {:jsonrpc "2.0" :id 8 :method "tools/call"
+               :params {:name "lake_dispatch"
+                        :arguments {:artifact "bafkreia2cc444k5yrw57uhszfrvbri7wee3ljbpb5wfcorykk72kgxhjaq"
+                                    :event ["todo/add" "milk"]
+                                    :principal "did:key:zMallory"}}}
+              {:principal "did:key:zAlice" :grant "session-grant"
+               :handlers {:lake-dispatch (fn [env] (reset! seen env) {:ok true})}})]
+    (is (str/includes? (get-in resp [:result :content 0 :text]) ":ok true"))
+    (is (= "did:key:zAlice" (:principal @seen)))
+    (is (= "session-grant" (:grant @seen)))
+    (is (= "bafkreia2cc444k5yrw57uhszfrvbri7wee3ljbpb5wfcorykk72kgxhjaq" (:artifact @seen)))
+    (is (= {:kind :action :event ["todo/add" "milk"]} (:input @seen)))))
+
+(deftest lake-dispatch-declares-the-artifact-required
+  (let [t (first (filter #(= "lake_dispatch" (:name %)) (mcp/tools base)))]
+    (is (= #{"artifact" "event"} (set (get-in t [:inputSchema :required]))))
+    (is (not (contains? (get-in t [:inputSchema :properties]) "grant"))
+        "a grant is never a tool argument")))
+
