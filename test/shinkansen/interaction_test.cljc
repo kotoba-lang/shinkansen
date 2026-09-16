@@ -71,6 +71,9 @@
 
 (deftest the-runtime-is-one-self-contained-string
   (is (string? i/runtime))
-  (doseq [needle ["globalThis.shinkansen=" "data-action" "data-params" "streamRun" "hydrate" "'data:'" "[DONE]" "AbortController"]]
+  (doseq [needle ["globalThis.shinkansen=" "data-action" "data-params" "streamRun" "hydrate" "'data:'" "[DONE]" "AbortController"
+                  ;; one reader for both wires (SSE data: lines and NDJSON
+                  ;; object lines) and a host-owned fetch
+                  "charAt(0)==='{'" "typeof src==='function'" "response:r"]]
     (is (str/includes? i/runtime needle) needle))
   (is (not (re-find #"(?i)itonami|kotoba-dds|bots-" i/runtime)) "nothing product-specific in the framework runtime"))

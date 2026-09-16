@@ -142,9 +142,15 @@ locale negotiation は document ではなく HOST/edge に属する。shinkansen
    runtime は click / submit の delegated listener を 1 本だけ持ち、host が `shinkansen.on(id, fn)`
    で登録した handler を `(params, element, event)` で呼ぶ。id は `shinkansen.actions` が宣言する
    event id と同じ語彙（`:cart/add` ↔ `"cart/add"`）。hiccup 側は `interaction/action-attrs`。
-2. **run stream**: `shinkansen.streamRun(url, {onEvent, onClose, onError}, init)` は Hermes 形
-   （`data: <json>`、`event` 名付き frame、comment 行は keepalive）の SSE を読む。JVM-free Hermes
-   gateway と Bot loop が話す wire なので、chat client はここで 1 度だけ読む。`{abort()}` を返す。
+2. **run stream**: `shinkansen.streamRun(source, {onEvent, onClose, onError}, init)` は run body を
+   行単位で読み、JSON frame ごとに `onEvent` を呼ぶ。wire は 2 形を 1 つの reader で受ける ——
+   Hermes 形 SSE（`data: <json>`、`[DONE]` と comment 行は skip）と newline-delimited JSON（行そのものが
+   object）。前者は JVM-free Hermes gateway、後者は Bot loop の `/api/bots/:id/messages/stream` が
+   話す（2026-09-16 実測、cloud-itonami-app）。`source` は URL か `(init) => Promise<Response>` ——
+   認証・CSRF retry は host、読むのは framework。非 2xx は body を読まずに
+   `onError({status, response})` へ渡す（host が自分の error body を読める）。`{abort(reason)}` を返す。
+   実行検査は `scripts/runtime-node-check.cljk`（runtime 文字列を Node で走らせ両 wire の frame 到達を
+   数える。`SCANNED\tn`）。
 3. **hydrate**: `shinkansen.hydrate(name, fn)` は `[data-hydrate="<name>"]` の未 hydrate な要素に
    `fn` を当てて印を付ける。mount は server が描き、browser は埋めるだけ。
 
@@ -180,6 +186,12 @@ cloud-itonami-app の `data-appearance` toggle（独自 key、独自 `:root:has(
   `href` へ移動するか reload する —— document は host/edge が再 negotiate し、client で描き直さない。
 - 両 action は **framework-actions** として全 declaration に merge され、`:actions-declared` 軸は
   宣言無しでも declared と数える。host は `shinkansen.on` で上書きできる。
+- **runtime で組み立てる文字列**（template literal）は render 時の `substitute` に映らない —— source に
+  1 つの literal として存在しないから。`shinkansen.locale.format(pattern, params)`（cljc は
+  `locale/format-message`）で `format('{name} に頼む', {name})` と書けば pattern は普通の quoted literal
+  になり、`:exact?` 表がそれを訳し、runtime が穴を埋める。`{key}` は params の値、無い key は
+  **そのまま残る**（見える穴。黙って空にしない）、nil は空、数値は `Intl.NumberFormat(<html lang>)`。
+  `shinkansen.locale.lang()` は `<html lang>`。
 
 ### 2.4 UI/UX document 契約は fitness function である（`shinkansen.audit` + `shinkansen.coscientist`）
 

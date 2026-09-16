@@ -113,3 +113,17 @@
                               {:exact? true :strings {"こんにちは" "say \"hi\""}}))))
   (testing "an untranslated node passes through as source text, never blank"
     (is (= "<p>未訳</p>" (locale/substitute "<p>未訳</p>" {:exact? true :strings {"x" "y"}})))))
+
+(deftest format-message-fills-placeholders-and-keeps-holes-visible
+  ;; the browser-side half of substitute: the pattern is an ordinary quoted
+  ;; literal the render-time table translates, this fills the holes after.
+  (is (= "応答中 12秒" (locale/format-message "{phase} {seconds}秒" {:phase "応答中" :seconds 12})))
+  (is (= "Ask Tamaki" (locale/format-message "Ask {name}" {"name" "Tamaki"})) "string keys work too")
+  (is (= "x  y" (locale/format-message "x {gone} y" {:gone nil})) "nil → empty")
+  (is (= "x {missing} y" (locale/format-message "x {missing} y" {})) "a missing param stays visible, never a silent blank")
+  (is (= "{not a key}" (locale/format-message "{not a key}" {:not "z"})) "only [A-Za-z0-9_-] names are placeholders")
+  (is (= "" (locale/format-message nil {}))))
+
+(deftest locale-runtime-carries-format-and-lang
+  (doseq [needle ["format:lfmt" "lang:llang" "Intl.NumberFormat" "hasOwnProperty" "getAttribute('lang')"]]
+    (is (str/includes? locale/runtime-fragment needle) needle)))

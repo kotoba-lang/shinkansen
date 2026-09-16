@@ -251,11 +251,44 @@
     (str "'; Path=" path "; SameSite=" same-site "; Max-Age=" max-age "'"
          (when secure "+(location.protocol==='https:'?'; Secure':'')"))))
 
+(def placeholder-re
+  "A `{key}` placeholder in a message pattern: letters, digits, `_`, `-`."
+  #"\{([A-Za-z0-9_-]+)\}")
+
+(defn format-message
+  "Message formatting for strings a script builds at runtime — the
+  browser-side half of `substitute`. A template literal
+  (`` `${bot.name} に頼む` ``) cannot be substituted at render time
+  because the source text never exists as one literal; written as
+  `shinkansen.locale.format('{name} に頼む', {name})` the pattern IS an ordinary quoted
+  script literal, so the render-time table translates it (`:exact?`)
+  and this fills the holes afterwards. `{key}` → the param; a key the
+  params do not carry stays as written (a hole you can see, never a
+  silent blank); nil → the empty string; numbers are printed as numbers
+  (the browser runtime formats them with Intl.NumberFormat for <html lang>).
+
+    (format-message \"{phase} {seconds}秒\" {:phase \"応答中\" :seconds 12})
+    → \"応答中 12秒\""
+  [pattern params]
+  (let [params (or params {})
+        lookup (fn [k] (cond (contains? params (keyword k)) (get params (keyword k))
+                             (contains? params k) (get params k)
+                             :else ::missing))]
+    (str/replace (str pattern) placeholder-re
+                 (fn [[whole k]]
+                   (let [v (lookup k)]
+                     (cond (= v ::missing) whole
+                           (nil? v) ""
+                           :else (str v)))))))
+
 (def runtime-fragment
   "The `shinkansen.locale` object the interaction runtime installs:
      get()                 → the cookie's locale or null
      set(locale, {href})   → writes the cookie, then navigates to href
-                             (the control's own) or reloads; returns locale"
+                             (the control's own) or reloads; returns locale
+     lang()                → <html lang> (the negotiated document locale)
+     format(pattern, params) → `format-message` above, numbers through
+                             Intl.NumberFormat(lang())"
   (str
    "var LK=" (pr-str (:cookie-name defaults)) ";"
    "function lget(){var m=document.cookie.match(new RegExp('(?:^|; )'+LK+'=([^;]*)'));return m?decodeURIComponent(m[1]):null;}"
@@ -263,4 +296,8 @@
    "document.cookie=LK+'='+encodeURIComponent(locale)+" (cookie-attrs-js) ";"
    "var href=opts&&opts.href;if(opts&&opts.navigate===false)return locale;"
    "if(href&&href!=='#')location.assign(href);else location.reload();return locale;}"
-   "var locale={get:lget,set:lset};"))
+   "function llang(){return document.documentElement.getAttribute('lang')||'';}"
+   "function lfmt(pattern,params){params=params||{};return String(pattern).replace(/\\{([A-Za-z0-9_-]+)\\}/g,function(whole,k){"
+   "if(!Object.prototype.hasOwnProperty.call(params,k))return whole;var v=params[k];if(v==null)return '';"
+   "if(typeof v==='number'&&isFinite(v)){try{return new Intl.NumberFormat(llang()||undefined).format(v);}catch(e){return String(v);}}return String(v);});}"
+   "var locale={get:lget,set:lset,lang:llang,format:lfmt};"))
