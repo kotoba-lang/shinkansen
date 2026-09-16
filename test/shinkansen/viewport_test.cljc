@@ -41,3 +41,12 @@
                  "<style>@media(max-width:64rem){.x{}}</style></head><body></body></html>")
         r (vp/audit {:file "mid.html" :html doc})]
     (is (some #(= :no-xs-band (:id %)) (:problems r)))))
+
+(deftest the-phone-band-may-live-in-a-linked-stylesheet
+  ;; measured 2026-09-16 on app-kotoba-cloud: 418 / 451 documents had a
+  ;; 768px query inline and their 480px band in the shared css/site.css
+  (let [html "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><link rel=\"stylesheet\" href=\"/css/site.css\"><style>@media (max-width: 768px){.x{display:none}}</style></head><body>x</body></html>"
+        site-css "@media (max-width: 480px){body{padding:8px}}"]
+    (is (= :no-xs-band (get-in (vp/audit {:html html}) [:problems 0 :id])) "the document alone has no phone band")
+    (is (:ok (vp/audit {:html html :stylesheets [site-css]})) "with the stylesheet it links, it does")
+    (is (= [480 768] (:bands (vp/audit {:html html :stylesheets [site-css]}))))))

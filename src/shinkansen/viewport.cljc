@@ -19,7 +19,8 @@
 
   Pure .cljc (dual-render per shitsuke). No js/. Static analysis only —
   this cannot verify real rendering; it verifies the CONTRACT markers the
-  host renderer and the framework rely on.")
+  host renderer and the framework rely on."
+  (:require [clojure.string :as str]))
 
 (def ^:const viewport-meta
   "The one viewport declaration a published document must carry. Width is
@@ -66,14 +67,22 @@
     :viewport-missing    no device-width viewport meta
     :no-xs-band          no media query covering phones (<= 480px)
     :fixed-width-body    a hard fixed px width on body/html (desktop-only
-                         layout marker)"
-  [{:keys [html file]}]
+                         layout marker)
+  `:stylesheets` is the text of the same-origin stylesheets the document
+  links (a site that emits ONE shared css/site.css keeps its phone band
+  there, not inline). Measured 2026-09-16 on cloud-kotoba/app-kotoba-cloud:
+  418 of 451 emitted documents carried a 768px query inline and their 480px
+  band in the shared stylesheet — the gate refused every one of them for
+  :no-xs-band while phones were fine. Bands are read over html + stylesheets;
+  without :stylesheets the answer is what the document alone says."
+  [{:keys [html file stylesheets]}]
   (let [html (str html)
+        css-text (str html " " (str/join " " (map str stylesheets)))
         problems (cond-> []
                    (not (meta-present? html))
                    (conj {:id :viewport-missing
                           :why "the document has no device-width viewport meta; on a phone it renders zoomed-out desktop layout"})
-                   (let [bands (media-bands html)]
+                   (let [bands (media-bands css-text)]
                      (and (seq bands) (> (first bands) 480)))
                    (conj {:id :no-xs-band
                           :why "the smallest media query band starts above 480px; phones have no layout"})
@@ -85,5 +94,5 @@
       {:ok true
        :file file
        :viewport viewport-meta
-       :bands (media-bands html)
+       :bands (media-bands css-text)
        :breakpoints breakpoints})))
