@@ -82,7 +82,8 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
     src/shinkansen/viewport.cljc multi-screen-size 契約（viewport meta + xs band、静的 audit）
     src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（19 軸、理由付き finding）
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
-    src/shinkansen/interaction.cljc browser 側の契約（data-action / data-params、run stream、hydrate）+ 1 本の runtime
+    src/shinkansen/interaction.cljc browser 側の契約（data-action / data-params、run stream、hydrate、theme、locale）+ 1 本の runtime
+    src/shinkansen/theme.cljc    light / dark / system の契約（storage、属性、head-script、theme/set）
     test/                        76 tests / 211 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
@@ -149,6 +150,25 @@ locale negotiation は document ではなく HOST/edge に属する。shinkansen
 
 js / event は host の権限（§1.3）のまま —— framework は DOM capability を足さない。runtime は
 文字列で、host が自分の file として配るか 1 度 inline する。
+
+### 2.3c theme と locale は framework の選択（`shinkansen.theme` / `shinkansen.locale` の browser 側、2026-09-16）
+
+オーナー指示「言語切り替え, dark, light, system theme switcher も統合」。同日の実測: theme の
+選択は jp-go-dds.theme-toggle（2 状態 λ、key `kotoba-theme`、`<html data-theme>`）、
+cloud-itonami-app の `data-appearance` toggle（独自 key、独自 `:root:has()` scope、server が
+外した appearance を JS がまだ回す）、OS 追従だけの page、の 3 通りが並存していた。契約は 1 つ:
+
+- **theme**: mode は `light | dark | system`。storage `kotoba-theme` に `light|dark`、**無い = system**。
+  `<html data-theme="light|dark">`、system は属性を**外す**（CSS が決して当てない値を入れると黙って
+  light になる）。CSS は `jp-go-dds.dark/dark-css`（`:root:root[data-theme]` が media block に勝つ）。
+  `theme/head-script` を `<head>` に置いて paint 前に適用、runtime の `shinkansen.theme`
+  （`get / effective / set / onChange`）が属性・storage・switcher を同期し、OS の変更にも
+  `shinkansen:theme` event で追従する。action は `theme/set {mode}`。
+- **locale**: action は `locale/set {locale}`。runtime の `shinkansen.locale.set` が §2.3 の
+  negotiation cookie（`defaults` の属性から**導出**、Secure は https のときだけ）を書き、control の
+  `href` へ移動するか reload する —— document は host/edge が再 negotiate し、client で描き直さない。
+- 両 action は **framework-actions** として全 declaration に merge され、`:actions-declared` 軸は
+  宣言無しでも declared と数える。host は `shinkansen.on` で上書きできる。
 
 ### 2.4 UI/UX document 契約は fitness function である（`shinkansen.audit` + `shinkansen.coscientist`）
 

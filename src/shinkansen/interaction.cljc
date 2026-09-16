@@ -43,9 +43,23 @@
      `[data-hydrate=\"<name>\"]` not yet hydrated and marks it; the mount
      is server-rendered, the browser only fills.
 
+  4. Framework actions. Two choices every product makes are the
+     framework's: the theme (`theme/set {mode}`, shinkansen.theme) and the
+     language (`locale/set {locale}`, shinkansen.locale). The runtime
+     installs `shinkansen.theme` / `shinkansen.locale` and answers both
+     actions itself; a host may override with `on`. `framework-actions` is
+     their declaration, merged into every audit.
+
   Pure .cljc: the contract functions take and return data; `runtime` is a
   string. No js/ in this namespace."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [shinkansen.theme :as theme]
+            [shinkansen.locale :as locale]))
+
+(def framework-actions
+  "The events the runtime answers on its own: theme/set and locale/set.
+   `undeclared-actions` and the audit axis treat them as declared everywhere."
+  {:events (merge (:events theme/actions) (:events locale/actions))})
 
 ;; ---------- contract (hiccup side) ----------
 
@@ -118,7 +132,8 @@
    controls is also empty — not a pass by itself, which is why the audit
    axis reports the count it scanned."
   [decl html]
-  (vec (remove #(contains? (:events decl) %) (document-actions html))))
+  (let [declared (merge (:events framework-actions) (:events decl))]
+    (vec (remove #(contains? declared %) (document-actions html)))))
 
 ;; ---------- the runtime ----------
 
@@ -153,5 +168,10 @@
    "return {abort:function(reason){ctl.abort(reason||'stop');}};}"
    "function hydrate(name,fn){var nodes=document.querySelectorAll('[data-hydrate=\"'+name+'\"]:not([data-hydrated])');"
    "for(var i=0;i<nodes.length;i++){nodes[i].setAttribute('data-hydrated','');fn(nodes[i]);}return nodes.length;}"
-   "globalThis.shinkansen={on:on,off:off,dispatch:dispatch,streamRun:streamRun,hydrate:hydrate,params:params};"
+   theme/runtime-fragment
+   locale/runtime-fragment
+   ;; the framework's own actions, answered here; a host's on() replaces them
+   "on('theme/set',function(p){theme.set(p.mode);});"
+   "on('locale/set',function(p,el){locale.set(p.locale,{href:el&&el.getAttribute('href')});});"
+   "globalThis.shinkansen={on:on,off:off,dispatch:dispatch,streamRun:streamRun,hydrate:hydrate,params:params,theme:theme,locale:locale};"
    "})();"))
