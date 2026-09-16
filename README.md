@@ -79,6 +79,9 @@ and cannot claim a CID.
 ## Test
 
 ```bash
+npm run verify:authority   # the seam under a REAL authorizer: Ed25519 Biscuit → biscuit.kotoba/authorize
+                           # → invoke → chain, 16 cases both directions (SPEC §3.1); needs the sibling
+                           # repos org-biscuitsec / authority / text at their west pins
 npm test           # nbb runner: requires each test ns explicitly (nbb 1.5.212
                    # no longer auto-requires), prints per-ns + TOTAL summary,
                    # exits non-zero on failure. 136 tests / 469 assertions.

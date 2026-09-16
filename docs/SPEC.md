@@ -445,6 +445,52 @@ kbb -M:test        # 136 tests / 469 assertions, 0 failures, 0 errors
 `no-authorizer-is-a-refusal-not-a-pass` と `a-query-goes-through-the-same-seam-and-answers-a-station`
 が落ちる（exit 1、4 failures）。無改変で exit 0。
 
+### 3.1 本物の authorizer での動作検証（`scripts/verify-invoke-authority.cljk`、2026-09-16）
+
+unit test の authorize-fn は fake。**seam が本物に繋がることは別に測る**:
+
+```bash
+npm run verify:authority   # 兄弟 repo（org-biscuitsec / authority / text）が west pin に在ること
+# = kbb --backend sci --classpath src:../org-biscuitsec/src:../org-biscuitsec/test:../authority/src:../text/src scripts/verify-invoke-authority.cljk
+```
+
+束ねたもの: Ed25519（node:crypto、org-biscuitsec 自身の real-crypto suite と同じ binding `biscuit.ed25519`）で
+root 発行 → 保持者が **offline で app A の chain だけに attenuate** → `biscuit.token/verify`（root **公開**鍵）→
+`biscuit.kotoba/authorize`（authority.chain の束、`:kinds` は **effect が名指す 1 kind に閉じる**）→
+`invoke/dispatch` / `invoke/query` → 本物の `actions` → `state/chain-entry` → `state/walk-chain`。
+MCP 層は `mcp/handle-request`（stdio loop が 1 行ごとに呼ぶ関数）を in-process で通す。
+
+出力は `CASE<TAB>name<TAB>OK|FAIL<TAB>expected<TAB>got<TAB>guest-steps n`、末尾 `SCANNED<TAB>16<TAB>FAILED<TAB>0`。
+exit 0 は n>0 かつ FAILED=0 のときだけ、1 は FAIL、2 は setup 不能（「測れなかった」は pass と別の値）。
+
+| case | 期待（理由 literal を pin） |
+|---|---|
+| authorizer 無し | `:no-authorizer`、guest step 0 |
+| grant 無し | `:no-grant-presented` |
+| A に narrow した token で A に append | ok、entry に `:principal` / `:receipt {:reason :pass/granted :depth 2}`、結果のどこにも `:grant` 無し、`walk-chain` valid |
+| 同じ token で **B** に append | `:denied` / `:out-of-scope`（束の答え） |
+| root の wildcard token で B | ok（wildcard は本物、境界の両側） |
+| query-only token で append | `:pass/no-grant`（kind を閉じたから） |
+| `before` 過去の token | `:expired-or-no-trusted-time` |
+| splice（block 0 の next key を差し替え、attacker 鍵で追記） | `:signature-mismatch`（暗号学的に、index 0） |
+| 許可済みだが未宣言 event | `:undeclared-event`（宣言 gate は authority の後も立つ） |
+| query grant で A を query | ok、data station |
+| query grant で B | `:out-of-scope` |
+| MCP: session の grant で append | ok、principal が記録される |
+| MCP: 引数に wide token を紛れ込ませて B | `:out-of-scope`（session の narrow token が勝つ） |
+| MCP: session に grant 無し | `:no-grant-presented` |
+
+壊して確かめた: ① seam が authorizer の否を無視するよう書き換え → 8 FAIL、exit 1。② binding の `:kinds` を
+3 kind 全部に開く → query-only token は**別の理由**（scope 束の `:out-of-scope`）で止まり、pin した
+`:pass/no-grant` と食い違って 1 FAIL —— 理由 literal を pin していなければこの退行は緑のまま通った
+（8 問 #6 の実例）。無改変で exit 0、SCANNED 16。
+
+測っていないこと: stdio **process** に app を attach した経路（`stdio.cljc` は R0 のまま）、protobuf wire を
+跨いだ Biscuit（`biscuit.wire` は経路上に無く、token model を data で渡している）。
+⚠ 発見: `lang/capability-semantics.edn` の閉じた `:kinds` に `:chain/append` / `:app/query` / `:app/assert` は
+**無い**。semantics の集合をそのまま `:kinds` に渡す production authorizer は 3 つとも `:unknown-kind :deny` で
+拒否する —— 方向は正しい（fail-closed）が、登録は言語側の決定（§6 の次段 2 に含める）。
+
 ---
 
 ## 4. 依存と非依存
@@ -480,10 +526,11 @@ visual shell を複製しないこと (ADR-2609092600 :document の自己完結�
 1. **yataverse lake index への着地**: worktree
    `net-kotobase-ipfs-yataverse-index` に着手済みの top page / `/api/v1/lake/*`
    を shinkansen publish 経由に置き換え
-2. **authorize-fn の実体を 1 本束ねる**: `biscuit.kotoba-logic/authorize`（五源 join）を
-   `invoke` の seam に繋ぎ、`lake_dispatch` の R0 refusal を本物の decision に置き換える。
+2. **authorize-fn の実体を production に束ねる**: §3.1 の binding（verify → `biscuit.kotoba/authorize`、
+   kind を 1 つに閉じる）を host に置き、`lake_dispatch` の R0 refusal を本物の decision に置き換える。
    session の principal は CACAO（人）/ DID（agent）から、grant は `auth.kotobase.net/v1/biscuit/token`
-   から。**framework 側に Biscuit parser を置かない。**
+   から。`:chain/append` / `:app/query` / `:app/assert` を `lang/capability-semantics.edn` の `:kinds` に
+   登録する（無ければ `:unknown-kind :deny`）。**framework 側に Biscuit parser を置かない。**
 3. **`POST <api>/invoke` の host binding**: cloud-kotoba/app-kotoba-cloud で envelope を受け、
    `Authorization` header の grant を envelope に折り込む（cookie は使わない、§1.6）。
 4. **chain entry の receipt 署名**: §1.5 の既知の限界（`:prev` / `:event` / `:principal` が hash 外）を
