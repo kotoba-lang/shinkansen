@@ -46,7 +46,8 @@ and cannot claim a CID.
     src/shinkansen/publish.cljk    view/document → CID (both planes), fail-closed
     src/shinkansen/state.cljk      db value → CID chain (Unison-style content addressing)
     src/shinkansen/mcp.cljk        MCP tool surface (stdio JSON-RPC, kotoba-server shape)
-    src/shinkansen/interaction.cljc  browser contract (data-action / run stream / hydrate) + one runtime
+    src/shinkansen/interaction.cljc  browser contract (data-action / run stream / hydrate / theme / locale) + one runtime
+    src/shinkansen/theme.cljc      light / dark / system — storage, attribute, head script, theme/set
     src/shinkansen/viewport.cljc   multi-screen-size contract (viewport meta + phone band)
     src/shinkansen/audit.cljc      UI/UX document contract as a deterministic fitness function (20 axes)
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta kaizen loop, judge = audit

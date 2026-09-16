@@ -193,3 +193,38 @@
                :self-contained (boolean (:ok m))
                :manifest (assoc m :cid cid)}))
           locales)))
+
+;; ---------- the browser side (2026-09-16, owner: 「言語切り替え … も統合」) ----------
+
+(def actions
+  "The event a language switch names: locale/set {locale}. The runtime
+   answers it by writing the negotiation cookie (`defaults`) and following
+   the control's href or reloading — the document is re-negotiated by the
+   host/edge, never re-rendered client-side. Merged into every declaration
+   by shinkansen.interaction/framework-actions."
+  {:events {:locale/set {:validate (fn [[_ {:keys [locale]}]]
+                                     (boolean (some-> locale str str/trim not-empty)))}}})
+
+(defn- cookie-attrs-js
+  "The `defaults` :cookie-attrs as the JS the runtime appends to the cookie
+   string — the one serialization, derived, not retyped. Secure is emitted
+   only on https (a Secure cookie on http://localhost is silently dropped,
+   which reads as 'the switch does nothing')."
+  []
+  (let [{:keys [path same-site max-age secure]} (:cookie-attrs defaults)]
+    (str "'; Path=" path "; SameSite=" same-site "; Max-Age=" max-age "'"
+         (when secure "+(location.protocol==='https:'?'; Secure':'')"))))
+
+(def runtime-fragment
+  "The `shinkansen.locale` object the interaction runtime installs:
+     get()                 → the cookie's locale or null
+     set(locale, {href})   → writes the cookie, then navigates to href
+                             (the control's own) or reloads; returns locale"
+  (str
+   "var LK=" (pr-str (:cookie-name defaults)) ";"
+   "function lget(){var m=document.cookie.match(new RegExp('(?:^|; )'+LK+'=([^;]*)'));return m?decodeURIComponent(m[1]):null;}"
+   "function lset(locale,opts){locale=String(locale||'').trim();if(!locale)return null;"
+   "document.cookie=LK+'='+encodeURIComponent(locale)+" (cookie-attrs-js) ";"
+   "var href=opts&&opts.href;if(opts&&opts.navigate===false)return locale;"
+   "if(href&&href!=='#')location.assign(href);else location.reload();return locale;}"
+   "var locale={get:lget,set:lset};"))

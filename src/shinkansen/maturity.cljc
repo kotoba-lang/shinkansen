@@ -95,4 +95,6 @@
   cannot silently regress to 'everything is missing'."
   [{:axis :e :name :responsive-contract :closed-by "shinkansen.viewport + publish/manifest gate"}
    {:axis :c :name :browser-dispatch-surface
-    :closed-by "shinkansen.interaction — data-action / data-params on the control, ONE delegated runtime, the same event ids shinkansen.actions declares; audit :actions-declared measures the gap (2026-09-16)"}])
+    :closed-by "shinkansen.interaction — data-action / data-params on the control, ONE delegated runtime, the same event ids shinkansen.actions declares; audit :actions-declared measures the gap (2026-09-16)"}
+   {:axis :e :name :theme-and-locale-choice
+    :closed-by "shinkansen.theme (light/dark/system: kotoba-theme storage, <html data-theme>, head-script before paint) + shinkansen.locale browser side (locale/set writes the negotiation cookie); both are framework actions the runtime answers (2026-09-16)"}])
