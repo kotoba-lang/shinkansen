@@ -125,17 +125,18 @@
    {:axis :ui :name :headless-behaviors
     :theirs "Radix ≈ 28 primitives with focus management, portals, collision-aware positioning."
     :ns nil :status :driven-by-product :consumers nil
-    :have "jp-go-dds.behavior 7: dialog / menu / tabs / disclosure / radiogroup / toast / combobox; marker-driven, one runtime; audit :behaviors-delivered"
-    :gap "popover / tooltip / hover-card / select / slider / switch / scroll-area / context-menu / navigation-menu / toggle-group / menubar / toolbar; no collision-aware positioning; no portal (data-chrome=float + audit :chrome-layers instead)"}
+    :have "jp-go-dds.behavior 0.2.0, 12: dialog / menu / tabs / disclosure / radiogroup / toast / combobox + popover / tooltip / select / slider / table (2026-09-16); marker-driven, one runtime; place() flips up and clamps every float; audit :behaviors-delivered knows all 12"
+    :gap "hover-card / switch (a cloud-kotoba-dds pattern, not a behaviour) / scroll-area / context-menu / navigation-menu / toggle-group / menubar / toolbar; no portal (data-chrome=float + audit :chrome-layers instead)"}
    {:axis :ui :name :forms
     :theirs "shadcn: react-hook-form + zod, field errors."
-    :ns 'shinkansen.actions :status :declared :consumers 0
-    :have ":validate fn per declared event"
-    :gap "no schema, no field-error markup contract"}
+    :ns 'shinkansen.form :status :declared :consumers 0
+    :have "schema as data (type / required / min / max / pattern / in / message), validate coerces what a form posts and names every failing rule by field, field-attrs puts aria-invalid + aria-describedby on the control, jp-go-dds form-field :error renders the text; a schema map is a valid :validate in an actions declaration and the refusal carries :errors / :messages"
+    :gap "no product renders field errors through it yet"}
    {:axis :ui :name :data-table
     :theirs "shadcn: tanstack table (sort / filter / virtualize)."
-    :ns nil :status :absent :consumers 0
-    :have "DADS table markup only" :gap "no behavior"}
+    :ns nil :status :driven-by-product :consumers nil
+    :have "jp-go-dds data-behavior=table: sort by column (numeric / locale, aria-sort), filter rows, count; dds/table :sortable? / :filter"
+    :gap "no virtualisation — by design, a DADS table is a page of rows"}
    {:axis :ui :name :charts
     :theirs "shadcn: recharts."
     :ns nil :status :absent :consumers 0

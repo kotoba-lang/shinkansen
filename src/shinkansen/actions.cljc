@@ -25,7 +25,8 @@
 
   Pure .cljc. The host owns the HTTP binding and persistence; this owns
   the declaration → validation → chain-entry seam."
-  (:require [shinkansen.state :as state]))
+  (:require [shinkansen.form :as form]
+            [shinkansen.state :as state]))
 
 (defn declared?
   "Is this event id in the declaration?"
@@ -33,16 +34,23 @@
   (contains? (:events decl) event-id))
 
 (defn validate-event
-  "Run the event's :validate fn (default: non-nil event). Returns
-  {:ok true} or {:ok false :reason ...} naming the event id."
+  "Run the event's :validate — a fn over the event, or a shinkansen.form
+  schema map (`{:fields …}`) over the event's values map (`[id values]`).
+  Returns {:ok true} or {:ok false :reason ...} naming the event id; with
+  a schema the refusal carries :errors / :messages by field, so the host
+  can put them on the markup (form/field-attrs)."
   [decl event]
   (let [id (first event)
-        f (get-in decl [:events id :validate])]
+        v (get-in decl [:events id :validate])
+        schema (when (and (map? v) (contains? v :fields)) v)
+        f (cond schema (form/event-validator schema) (fn? v) v)]
     (cond
       (not (declared? decl id))
       {:ok false :reason :undeclared-event :event-id id}
       (and f (not (f event)))
-      {:ok false :reason :validation-failed :event-id id}
+      (cond-> {:ok false :reason :validation-failed :event-id id}
+        schema (merge (select-keys (form/validate schema (if (map? (second event)) (second event) {}))
+                                   [:errors :messages])))
       :else {:ok true})))
 
 (defn dispatch

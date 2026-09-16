@@ -213,8 +213,9 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
     src/shinkansen/host.cljc     reference host（request → response の純関数: name → bytes、POST /invoke、named status）
     src/shinkansen/serve.cljc    node:http transport + dev loop（watch / rebuild / reload stream / error-as-500）
     src/shinkansen/maturity.cljc Next / SvelteKit / shadcn / Radix との比較を data で（declared vs driven、test で ns 実在を pin）
+    src/shinkansen/form.cljc     schema（data）→ validate（coerce + field ごとの理由）→ field-attrs（aria-invalid / describedby）
     examples/reference_app.cljc  本物の CID・本物の Biscuit authorizer を束ねた todo app（`npm run host`）
-    test/                        154 tests / 575 assertions, 0 fail 0 error（nbb via kbb）
+    test/                        160 tests / 604 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -377,6 +378,20 @@ form）、`/todos`（:ssr）、`/todos/:id`（:ssr + path param）、`POST /invo
 state を load していないと **nil** を返す。suite では state-test が load するので緑、走る host では
 `null.call`（host-node-check の初回で発見）。`require` に置き換えた。**suite の緑は「駆動された」ではない**。
 
+### 2.6 forms —— schema と field-error の契約（`shinkansen.form`、2026-09-16）
+
+shadcn 側の react-hook-form + zod に当たるもの。schema は data（`{:fields {:email {:type :string
+:required true :max 120 :pattern … :message "…"} …}}`）、`validate` は form が post した文字列を型に
+coerce し、**落ちた field と rule を全部**名指す（`{:errors {:email [:pattern] :agree [:required]}
+:messages {…}}`）。markup 側は `field-attrs` が control に `aria-invalid="true"` + `aria-describedby`
+（`<id>-error`）を出し、jp-go-dds `form-field :error` が同じ id で error text を描く —— error は control の
+そばに在り、消える toast ではない。`actions` の declaration は `:validate` に fn の代わりに **schema map** を
+受け、拒否に `:errors` / `:messages` を付ける（同じ schema が chain と form の両方を gate する）。
+
+`:behaviors-delivered`（§2.4）の契約表は jp-go-dds.behavior 0.2.0 の **12 kind** を知る（2026-09-16 に
+popover / tooltip / select / slider / table が加わった。宣言があるのに契約表に無ければ「no such behaviour」に
+なるので、behavior 層と audit は同じ日に動く）。
+
 ### 2.4 UI/UX document 契約は fitness function である（`shinkansen.audit` + `shinkansen.coscientist`）
 
 オーナー指示（2026-09-15、`kotoba.cloud/account` の実測「uiux 品質があまり高くない」）:
@@ -471,7 +486,7 @@ framework の改善は co-scientist の approach で進める —— **測れな
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 154 tests / 575 assertions, 0 failures, 0 errors
+kbb -M:test        # 160 tests / 604 assertions, 0 failures, 0 errors
 ```
 
 ⚠ `test_runner` の `-main` に**列挙されていない** test ns は require されても走らない。
