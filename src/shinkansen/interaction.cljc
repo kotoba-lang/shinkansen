@@ -32,13 +32,19 @@
      `\"cart/add\"`), so a document's controls and its dispatch surface are
      one vocabulary — `undeclared-actions` measures the gap, and
      `shinkansen.audit` scores it when a declaration is supplied.
-  2. Run streams. `streamRun(url, handlers, init)` reads a Hermes-shaped
-     SSE body (`data: <json>` frames, each with an `event` name; comment
-     lines are keepalives) and calls `handlers.onEvent(frame)` per frame,
-     `handlers.onClose()` at end of stream. Returns `{abort()}`. This is
-     the wire the JVM-free Hermes gateway and the Bot loop both speak
-     (cloud-itonami-app docs/hermes-bot-mode-compatibility.md), so a chat
-     client reads it once, here.
+  2. Run streams. `streamRun(source, handlers, init)` reads a run body
+     line by line and calls `handlers.onEvent(frame)` per JSON frame,
+     `handlers.onClose()` at end of stream. Two wire shapes, one reader:
+     Hermes-shaped SSE (`data: <json>` lines, `[DONE]` and comment lines
+     skipped) and newline-delimited JSON (a line that is itself an
+     object) — the JVM-free Hermes gateway speaks the first, the Bot loop's
+     `/api/bots/:id/messages/stream` the second (cloud-itonami-app
+     docs/hermes-bot-mode-compatibility.md), and a chat client should not
+     carry two readers for one screen. `source` is a URL or a function
+     `(init) => Promise<Response>` — the host owns authentication and
+     retry, the framework owns the reading. A non-2xx response reaches
+     `handlers.onError({status, response})` unread, so the host can read
+     its own error body. Returns `{abort(reason)}`.
   3. Hydration. `hydrate(name, fn)` runs `fn(element)` for every
      `[data-hydrate=\"<name>\"]` not yet hydrated and marks it; the mount
      is server-rendered, the browser only fills.
@@ -139,7 +145,7 @@
 
 (def runtime
   "The one browser runtime for the contract. Exposes
-   `globalThis.shinkansen = {on, off, dispatch, streamRun, hydrate, params}`.
+   `globalThis.shinkansen = {on, off, dispatch, streamRun, hydrate, params, theme, locale}`.
    The host ships it as its own file or inlines it once; nothing in it is
    product-specific."
   (str
@@ -156,12 +162,14 @@
    "if(ev.type==='submit'||el.tagName==='A'||el.tagName==='BUTTON')ev.preventDefault();"
    "handlers[id](params(el),el,ev);}"
    "document.addEventListener('click',delegate);document.addEventListener('submit',delegate);"
-   "function streamRun(url,h,init){var ctl=new AbortController();var opts=Object.assign({},init||{});opts.signal=ctl.signal;"
+   "function streamRun(src,h,init){var ctl=new AbortController();var opts=Object.assign({},init||{});opts.signal=ctl.signal;"
    "var closed=false;function close(){if(closed)return;closed=true;if(h&&h.onClose)h.onClose();}"
-   "fetch(url,opts).then(function(r){if(!r.ok){if(h&&h.onError)h.onError({status:r.status});close();return;}"
+   "var started=typeof src==='function'?Promise.resolve().then(function(){return src(opts);}):fetch(src,opts);"
+   "started.then(function(r){if(!r.ok){if(h&&h.onError)h.onError({status:r.status,response:r});close();return;}"
    "var reader=r.body.getReader(),dec=new TextDecoder(),buf='';"
    "function drain(final){var lines=buf.split('\\n');buf=final?'':lines.pop();"
-   "for(var i=0;i<lines.length;i++){var line=lines[i].trim();if(line.indexOf('data:')!==0)continue;var body=line.slice(5).trim();if(body==='[DONE]')continue;"
+   "for(var i=0;i<lines.length;i++){var line=lines[i].trim();if(!line)continue;var body=null;"
+   "if(line.indexOf('data:')===0){body=line.slice(5).trim();if(body==='[DONE]')continue;}else if(line.charAt(0)==='{'){body=line;}else continue;"
    "var frame=null;try{frame=JSON.parse(body);}catch(e){continue;}if(h&&h.onEvent)h.onEvent(frame);}}"
    "function step(){return reader.read().then(function(res){if(res.done){drain(true);close();return;}buf+=dec.decode(res.value,{stream:true});drain(false);return step();});}"
    "return step();}).catch(function(e){if(h&&h.onError)h.onError({error:String(e&&e.message||e),aborted:ctl.signal.aborted});close();});"

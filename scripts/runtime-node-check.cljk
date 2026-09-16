@@ -1,0 +1,54 @@
+(ns runtime-node-check
+  "Executes the interaction runtime string in this Node process against a
+  minimal document/fetch double and asserts what a static needle test
+  cannot: that streamRun delivers frames from BOTH wire shapes (SSE
+  `data:` lines and newline-delimited JSON), that a host-supplied fetch is
+  used, that a non-2xx response reaches onError unread, and that
+  locale.format fills placeholders with Intl numbers for <html lang>.
+  Prints `SCANNED<TAB>n` (n = checks executed); exit 1 on any failure,
+  2 when node itself refused to run the runtime.
+
+  Run: kbb --backend sci --classpath src scripts/runtime-node-check.cljk"
+  (:require [shinkansen.interaction :as i]
+            [clojure.string :as str]))
+
+(def harness
+  (str
+   "var frames=[];var closes=0;var errors=[];var fetched=[];"
+   "globalThis.document={cookie:'',documentElement:{getAttribute:function(k){return k==='lang'?'en':null;},setAttribute:function(){},removeAttribute:function(){}},addEventListener:function(){},querySelectorAll:function(){return [];}};"
+   "globalThis.location={protocol:'http:',assign:function(){},reload:function(){}};"
+   "globalThis.window=globalThis;globalThis.matchMedia=function(){return {matches:false,addEventListener:function(){}};};"
+   "globalThis.CustomEvent=function(t,o){this.type=t;this.detail=o&&o.detail;};globalThis.document.dispatchEvent=function(){};"
+   "globalThis.localStorage={getItem:function(){return null;},setItem:function(){},removeItem:function(){}};"
+   "function body(text){var enc=new TextEncoder();var chunks=[enc.encode(text.slice(0,7)),enc.encode(text.slice(7))];var i=0;"
+   "return {getReader:function(){return {read:function(){if(i<chunks.length)return Promise.resolve({done:false,value:chunks[i++]});return Promise.resolve({done:true});}};}};}"
+   "globalThis.fetch=function(url,opts){fetched.push(url);if(url==='/sse')return Promise.resolve({ok:true,body:body('data: {\"event\":\"a\"}\\n: keepalive\\ndata: [DONE]\\ndata: {\"event\":\"b\"}\\n')});"
+   "if(url==='/ndjson')return Promise.resolve({ok:true,body:body('{\"type\":\"delta\",\"content\":\"x\"}\\n\\n{\"type\":\"done\"}\\n')});"
+   "return Promise.resolve({ok:false,status:403,json:function(){return Promise.resolve({error:{type:'invalid-csrf'}});}});};"
+   i/runtime
+   "var S=globalThis.shinkansen;"
+   "S.streamRun('/sse',{onEvent:function(f){frames.push('sse:'+f.event);},onClose:function(){closes++;}});"
+   "S.streamRun('/ndjson',{onEvent:function(f){frames.push('nd:'+f.type);},onClose:function(){closes++;}});"
+   "S.streamRun(function(opts){fetched.push('fn'+(opts.signal?'+signal':''));return fetch('/denied',opts);},{onError:function(e){errors.push(e.status+':'+(e.response&&typeof e.response.json));},onClose:function(){closes++;}});"
+   "var fmt=S.locale.format('{phase} {seconds}s {n} {missing} {gone}',{phase:'model',seconds:1234.5,n:7,gone:null});"
+   "setTimeout(function(){process.stdout.write(JSON.stringify({frames:frames,closes:closes,errors:errors,fetched:fetched,fmt:fmt,lang:S.locale.lang()}));},50);"))
+
+(def cp (js/require "child_process"))
+(def res (.spawnSync cp "node" #js ["-e" harness] #js {:encoding "utf8"}))
+(when-not (zero? (.-status res))
+  (println "REFUSE node exited" (.-status res) (.-stderr res))
+  (js/process.exit 2))
+(def out (js->clj (js/JSON.parse (.-stdout res)) :keywordize-keys true))
+(def checks
+  [["sse frames a,b (DONE and comment skipped)" (= ["sse:a" "sse:b"] (filter #(str/starts-with? % "sse:") (:frames out)))]
+   ["ndjson frames delta,done (blank line skipped)" (= ["nd:delta" "nd:done"] (filter #(str/starts-with? % "nd:") (:frames out)))]
+   ["every stream closed once" (= 3 (:closes out))]
+   ["host fetch fn received opts with signal" (some #{"fn+signal"} (:fetched out))]
+   ["non-2xx reaches onError with the unread response" (= ["403:function"] (:errors out))]
+   ["format: Intl number for lang=en, hole visible, nil blank" (= "model 1,234.5s 7 {missing} " (:fmt out))]
+   ["lang() reads <html lang>" (= "en" (:lang out))]])
+(doseq [[label ok] checks] (println (if ok "ok  " "FAIL") label))
+(println (str "SCANNED\t" (count checks)))
+(when (some (complement second) checks)
+  (println (pr-str out))
+  (js/process.exit 1))
