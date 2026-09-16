@@ -97,7 +97,7 @@ npm run verify:authority   # the seam under a REAL authorizer: Ed25519 Biscuit â
                            # repos org-biscuitsec / authority / text at their west pins
 npm test           # nbb runner: requires each test ns explicitly (nbb 1.5.212
                    # no longer auto-requires), prints per-ns + TOTAL summary,
-                   # exits non-zero on failure. 162 tests / 618 assertions.
+                   # exits non-zero on failure. 163 tests / 621 assertions.
 ```
 
 ## MCP stdio server
