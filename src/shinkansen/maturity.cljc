@@ -11,9 +11,11 @@
   `[shinkansen.<ns>` require forms): 5 namespaces had consumers
   (interaction 10, theme 6, audit 6, viewport 3, coscientist 1) and eleven
   had none. The reference host (shinkansen.host + shinkansen.serve, the
-  reference app, host-node-check) is what turns 'declared' into 'driven by
-  the framework's own host' — it is NOT a product consumer, and the map
-  says which is which.
+  reference app, host-node-check) turned 'declared' into 'driven by the
+  framework's own host'; later the same day kotoba.cloud (cloud-kotoba/
+  app-kotoba-cloud) became the product consumer of routes / adapter /
+  invoke / state identity — the map says which is which, and :consumers
+  counts products, not the framework's own host.
 
   Status vocabulary (one of):
     :driven-by-product   a deployed product requires it (count in :consumers)
@@ -31,9 +33,9 @@
 (def rows
   [{:axis :a :name :routing-layouts
     :theirs "Next: file-system app router, nested/parallel layouts. SvelteKit: file routing, layout groups."
-    :ns 'shinkansen.routes :status :driven-by-host :consumers 0
-    :have "declared route tree, :param segments, nested layouts composed outside-in by the host, :invocation on the ok result"
-    :gap "no product serves through it; app-kotoba-cloud has its own site.cljk"}
+    :ns 'shinkansen.routes :status :driven-by-product :consumers 1
+    :have "declared route tree, :param segments, nested layouts composed outside-in by the host, :invocation on the ok result; paths->tree from a flat emit. kotoba.cloud (app-kotoba-cloud content-identity, 2026-09-16) resolves every request name against the tree its render emitted — that is what decides a name is a document and gets its CID"
+    :gap "layouts are still the app's own site.cljk; the tree names documents, it does not render them"}
    {:axis :b :name :data-loading
     :theirs "Next: RSC async + fetch cache. SvelteKit: load (server/universal), streamed promises."
     :ns 'shinkansen.load :status :driven-by-host :consumers 0
@@ -41,9 +43,9 @@
     :gap "no streaming of load results; no product consumer"}
    {:axis :c :name :mutations
     :theirs "Next: server actions. SvelteKit: form actions with use:enhance (works without JS)."
-    :ns 'shinkansen.invoke :status :driven-by-host :consumers 0
-    :have "one envelope (query/action/event), the authority seam, POST /invoke on the reference host, MCP lake_dispatch as a transport"
-    :gap "no no-JS form fallback (a form without the runtime GETs its own page); no product consumer"}
+    :ns 'shinkansen.invoke :status :driven-by-product :consumers 1
+    :have "one envelope (query/action/event), the authority seam, POST /invoke on the reference host, MCP lake_dispatch as a transport; kotoba.cloud POST /v1/invoke (app-kotoba-cloud.invoke) binds it to the authn Biscuit wire and the pinned root key — the first surface on that host that verifies a presented token"
+    :gap "no no-JS form fallback (a form without the runtime GETs its own page); kotoba.cloud has no state chain, so :action is 422 by name there"}
    {:axis :c :name :browser-dispatch-surface
     :theirs "React / Svelte event systems."
     :ns 'shinkansen.interaction :status :driven-by-product :consumers 10
@@ -86,9 +88,9 @@
     :gap "live-reload, not HMR (there is no module to hot-swap, only a new document CID); no error overlay beyond the error document"}
    {:axis :g :name :deploy-targets
     :theirs "Next: Vercel / standalone. SvelteKit: adapter-auto / node / cloudflare / static."
-    :ns 'shinkansen.adapter :status :declared :consumers 0
-    :have "adapter shape, receipts = CID set, diff, rollback plan"
-    :gap "zero adapters implemented; the two-plane publish is the root script (publish-document.cljk), shinkansen.publish is its front with no consumer"}
+    :ns 'shinkansen.adapter :status :driven-by-product :consumers 1
+    :have "adapter shape, receipts = CID set, diff, rollback plan; kotoba.cloud's render (site.cljk write-receipts!) runs every emitted document through adapt — the publish gate first (viewport, with the shared stylesheet), then a receipt with its CID — and ships the set at /.well-known/shinkansen/receipts.json"
+    :gap "the adapter writes receipts, not the bytes (Cloudflare Static Assets carry them); the two-plane publish is still the root script"}
    {:axis :g :name :error-handling
     :theirs "Next: error.tsx / not-found. SvelteKit: +error.svelte."
     :ns 'shinkansen.host :status :driven-by-host :consumers 0
@@ -101,9 +103,9 @@
     :why "a :document is one self-contained file (ADR-2609092600) — an optimizer that serves variants from a CDN contradicts the identity rule; metadata is the app's markup"}
    {:axis :h :name :authorization
     :theirs "none in core (Auth.js / Lucia)."
-    :ns 'shinkansen.invoke :status :driven-by-host :consumers 0
-    :have "DID / CID / grant / effect seam; verified under a real Ed25519 Biscuit + authority lattice (verify-invoke-authority, 16 cases); the reference host binds it"
-    :gap "no product binds an authorizer yet; :chain/append / :app/query / :app/assert are not in capability-semantics :kinds"
+    :ns 'shinkansen.invoke :status :driven-by-product :consumers 1
+    :have "DID / CID / grant / effect seam; verified under a real Ed25519 Biscuit + authority lattice (verify-invoke-authority, 16 cases); the reference host binds it; kotoba.cloud binds it to the authn wire (biscuit.wire) + the pinned root public key + biscuit.authority/->grant + authority.chain — a data:read token reads the receipt set, everything else is refused by name, measured in workerd"
+    :gap ":chain/append / :app/query / :app/assert are not in capability-semantics :kinds (the product maps them to kotoba://can/data:read|write, authn's vocabulary)"
     :unique true}
    {:axis :h :name :agent-surface
     :theirs "none."
@@ -112,8 +114,8 @@
     :gap "stdio process still answers R0 (no app attached)" :unique true}
    {:axis :h :name :content-addressing
     :theirs "none."
-    :ns 'shinkansen.state :status :driven-by-host :consumers 0
-    :have "identity = CID for documents, data, state (chain), route tree; ETag = CID on the name host"
+    :ns 'shinkansen.state :status :driven-by-product :consumers 1
+    :have "identity = CID for documents, data, state (chain), route tree; ETag = CID on the name host — live on kotoba.cloud / docs.kotoba.cloud (every document answers ETag = its raw CIDv1, Link rel=canonical ipfs://, 304 from the receipt alone)"
     :gap "chain hash covers the db value only (:prev / :event / :principal are outside it) — SPEC §1.5"
     :unique true}
    ;; ── component face: jp-go-dds + cloud-kotoba-dds vs shadcn / Radix ──
