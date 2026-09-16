@@ -76,6 +76,19 @@ and cannot claim a CID.
     kotoba/                        .kotoba guests (bridge modules, compiled by amu)
     test/                          kbb -M:test
 
+## Run the reference host
+
+```bash
+npm run host           # http://127.0.0.1:8787/ — real CIDs as ETags, real Ed25519 Biscuit
+                       # authorizer on POST /invoke, ssr /todos, dev live-reload
+npm run verify:host    # the same host on port 0, driven over HTTP: 17 cases, SCANNED 17 / FAILED 0
+```
+
+The host is the one place every contract is DRIVEN rather than declared
+(SPEC §2.5). `src/shinkansen/maturity.cljc` is the honest map of what a
+product still has to pick up — declared vs driven, with measured consumer
+counts — and its test pins that every namespace it names exists.
+
 ## Test
 
 ```bash
@@ -84,7 +97,7 @@ npm run verify:authority   # the seam under a REAL authorizer: Ed25519 Biscuit �
                            # repos org-biscuitsec / authority / text at their west pins
 npm test           # nbb runner: requires each test ns explicitly (nbb 1.5.212
                    # no longer auto-requires), prints per-ns + TOTAL summary,
-                   # exits non-zero on failure. 136 tests / 469 assertions.
+                   # exits non-zero on failure. 151 tests / 562 assertions.
 ```
 
 ## MCP stdio server

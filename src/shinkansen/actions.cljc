@@ -24,7 +24,8 @@
   §1.5 names — reaching the binding becomes the authority.
 
   Pure .cljc. The host owns the HTTP binding and persistence; this owns
-  the declaration → validation → chain-entry seam.")
+  the declaration → validation → chain-entry seam."
+  (:require [shinkansen.state :as state]))
 
 (defn declared?
   "Is this event id in the declaration?"
@@ -55,7 +56,10 @@
     (if-not (:ok v)
       v
       (let [next-db (state-fn db event)
-            text ((resolve 'shinkansen.state/db-text) next-db)
+            ;; was (resolve 'shinkansen.state/db-text): on nbb `resolve` answers
+            ;; nil when nothing else has loaded the ns — green in the suite (state-test
+            ;; loads it), null.call in the running host (host-node-check, 2026-09-16)
+            text (state/db-text next-db)
             cid (cid-fn text)
             entry {:db next-db :db-cid cid :prev prev-cid :event event
                    :height (or height 0) :text text}]

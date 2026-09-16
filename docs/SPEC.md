@@ -207,7 +207,11 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
     src/shinkansen/actions.cljc  post-authorization の宣言検査 + chain entry（binding は invoke 経由でここに来る）
     src/shinkansen/load.cljc     query の答え = data station（EDN text の CID）
     src/shinkansen/render.cljc   :ssg / :ssr / :isr。:ssr は query、cid-fn で :document-cid
-    test/                        136 tests / 469 assertions, 0 fail 0 error（nbb via kbb）
+    src/shinkansen/host.cljc     reference host（request → response の純関数: name → bytes、POST /invoke、named status）
+    src/shinkansen/serve.cljc    node:http transport + dev loop（watch / rebuild / reload stream / error-as-500）
+    src/shinkansen/maturity.cljc Next / SvelteKit / shadcn / Radix との比較を data で（declared vs driven、test で ns 実在を pin）
+    examples/reference_app.cljc  本物の CID・本物の Biscuit authorizer を束ねた todo app（`npm run host`）
+    test/                        151 tests / 562 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -320,6 +324,48 @@ cloud-itonami-app の `data-appearance` toggle（独自 key、独自 `:root:has(
   **そのまま残る**（見える穴。黙って空にしない）、nil は空、数値は `Intl.NumberFormat(<html lang>)`。
   `shinkansen.locale.lang()` は `<html lang>`。
 
+### 2.5 reference host —— 契約を「宣言」から「駆動」へ（`shinkansen.host` / `shinkansen.serve`、2026-09-16）
+
+実測（2026-09-16、cloud-kotoba / net-kotobase / cloud-itonami-app / cloud-kotoba-dds の require 形を数えた）:
+19 namespace のうち消費者があるのは 5（interaction 10 / theme 6 / audit 6 / viewport 3 / coscientist 1）、
+routes / load / render / actions / invoke / adapter / dev / state / bridge / publish / mcp の 11 は **0**。
+契約と test は在るが一度も host に呼ばれていない —— 宣言のみ。reference host はそれを framework 自身の
+host で駆動する（product consumer ではない。`maturity.cljc` は `:driven-by-host` と `:driven-by-product` を
+区別する）。
+
+`shinkansen.host/handle` は **request data → response data** の純関数、`shinkansen.serve` は node:http の
+transport + dev loop:
+
+    GET  <name>         routes/resolve-path → artifact → load（query station）→ render（:ssg verbatim /
+                        :ssr = query / :isr = window）→ layouts を外側へ合成 → bytes。
+                        ETag = CID、`Cache-Control: no-cache`（name は可変。`{cid}.ipfs.*` が不変 origin）、
+                        `Link: <ipfs://cid>; rel=canonical`（identity の在処）、If-None-Match → 304
+    POST /invoke        body → envelope（`:kind` と event id の文字列は interaction 語彙で keyword 化）、
+                        principal は `principal-fn(headers)`、grant は `grant-fn(headers)`（既定は
+                        `Authorization: Bearer <opaque>` の文字列。**何であるかは authorize-fn の仕事**、host は
+                        読まない）→ invoke/dispatch | query | authorize(:event) → chain（host の永続化）→ JSON
+    status              400 envelope の欠陥 / 403 seam の拒否（`:no-authorizer` を含む —— authorizer の無い host は
+                        error ではなく拒否）/ 404 `:no-match` + deepest / 405 / 422 `:undeclared-event` /
+                        `:validation-failed` / 500 `:document-not-registered`（tree が名指す leaf が documents に
+                        無い = 設定ミスであって missing page ではない）・`:render-failed`・`:load-failed`。
+                        error は viewport を持つ document（dev/error-document の規則は本番でも同じ）
+    dev                 `:dev?` で reload listener を `</body>` 前に注入（**dev bytes ≠ published bytes**）。
+                        `GET /__shinkansen/reload` は text/event-stream、ctx の swap で `reload`。`fs.watch` +
+                        debounce → `rebuild-fn` → `{:ok true :ctx}` なら swap、`{:ok false :problems}` なら
+                        **最後の良い tree のまま全 leaf を error document（500）に差し替えて理由を見せる**。
+                        HMR は無い —— hot-swap する module が無く、新しい document CID が在るだけ
+
+reference app（`examples/reference_app.cljc`、`npm run host`）は本物を束ねる: cid-fn = content-address
+（sha2-256 → raw CIDv1、publish 経路と同じ lib。ETag は本物の CID）、authorize-fn = §3.1 の binding
+（Ed25519 Biscuit → `biscuit.kotoba/authorize`、kind を 1 つに閉じる）、grant wire = `Bearer <base64 EDN token
+model>`（**この app の wire**であって framework の wire ではない）。`/`（:ssg、interaction runtime を inline した
+form）、`/todos`（:ssr）、`/todos/:id`（:ssr + path param）、`POST /invoke`。root 鍵は demo 用の固定 seed ——
+本番は `auth.kotobase.net/v1/biscuit/token` で発行し root 秘密鍵を配らない。
+
+実装で見つかった床割れ: `actions/dispatch` の `(resolve 'shinkansen.state/db-text)` は nbb では他 ns が
+state を load していないと **nil** を返す。suite では state-test が load するので緑、走る host では
+`null.call`（host-node-check の初回で発見）。`require` に置き換えた。**suite の緑は「駆動された」ではない**。
+
 ### 2.4 UI/UX document 契約は fitness function である（`shinkansen.audit` + `shinkansen.coscientist`）
 
 オーナー指示（2026-09-15、`kotoba.cloud/account` の実測「uiux 品質があまり高くない」）:
@@ -414,7 +460,7 @@ framework の改善は co-scientist の approach で進める —— **測れな
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 136 tests / 469 assertions, 0 failures, 0 errors
+kbb -M:test        # 151 tests / 562 assertions, 0 failures, 0 errors
 ```
 
 ⚠ `test_runner` の `-main` に**列挙されていない** test ns は require されても走らない。
@@ -487,6 +533,25 @@ exit 0 は n>0 かつ FAILED=0 のときだけ、1 は FAIL、2 は setup 不能
 
 測っていないこと: stdio **process** に app を attach した経路（`stdio.cljc` は R0 のまま）、protobuf wire を
 跨いだ Biscuit（`biscuit.wire` は経路上に無く、token model を data で渡している）。
+
+### 3.2 reference host を走らせて測る（`scripts/host-node-check.cljk`、2026-09-16）
+
+```bash
+npm run verify:host    # serve を port 0 で起動し fetch で 17 case、SCANNED 17 / FAILED 0
+npm run host           # 手で触る: http://127.0.0.1:8787/、console に dev token と curl 例
+```
+
+17 case: 200 + 本物の CID ETag + canonical Link + no-cache / dev bytes に reload listener / If-None-Match → 304 /
+未知 name → 404 `:no-match` / `/todos` ssr height 0 / grant 無し → 403 `no-grant-presented` / app の token → 200 +
+db-cid + `"grant"` key 無し / `/todos` が todo と height 1 と **新しい CID** / `/todos/:id` / 未宣言 → 422 /
+別 app の token → 403 `out-of-scope` / CIDv0 → 400 / 読めない grant → 403 `grant-unreadable`（app 自身の理由）/
+`:query` → data station / GET /invoke → 405 / reload stream が rebuild で `data: reload` / 失敗した rebuild が
+500 + `rebuild-failed` + 問題文。
+
+**実ブラウザ**（Chrome、2026-09-16）: `/` の form に token と text を入れて add → interaction runtime の delegated
+submit → `fetch('/invoke')` Bearer → `{"ok":true,… "height":1,"receipt":{"reason":"pass/granted"}}` が `<pre>` に
+出て navigation は起きず、`/todos` が「height 1 / buy milk from the browser」を描いた。⚠ extension の ref click は
+native submit を起こさず（座標 click は起こす）—— 自動化で form を押すときは座標で。
 ⚠ 発見: `lang/capability-semantics.edn` の閉じた `:kinds` に `:chain/append` / `:app/query` / `:app/assert` は
 **無い**。semantics の集合をそのまま `:kinds` に渡す production authorizer は 3 つとも `:unknown-kind :deny` で
 拒否する —— 方向は正しい（fail-closed）が、登録は言語側の決定（§6 の次段 2 に含める）。
@@ -531,8 +596,9 @@ visual shell を複製しないこと (ADR-2609092600 :document の自己完結�
    session の principal は CACAO（人）/ DID（agent）から、grant は `auth.kotobase.net/v1/biscuit/token`
    から。`:chain/append` / `:app/query` / `:app/assert` を `lang/capability-semantics.edn` の `:kinds` に
    登録する（無ければ `:unknown-kind :deny`）。**framework 側に Biscuit parser を置かない。**
-3. **`POST <api>/invoke` の host binding**: cloud-kotoba/app-kotoba-cloud で envelope を受け、
-   `Authorization` header の grant を envelope に折り込む（cookie は使わない、§1.6）。
+3. **product が reference host を通る**: cloud-kotoba/app-kotoba-cloud（か yataverse lake index）の配信を
+   routes → load → render → adapter に載せ、`POST /invoke` を本番 host に置く（cookie は使わない、§1.6）。
+   `maturity.cljc` の `:driven-by-host` 行を `:driven-by-product` にするのはこれだけ。
 4. **chain entry の receipt 署名**: §1.5 の既知の限界（`:prev` / `:event` / `:principal` が hash 外）を
    authorizer の署名付き receipt で閉じるか、entry 全体を hash するかを実測して決める。
 5. ~~guest bridge~~（`bridge.cljc` 着地済み）、~~MCP stdio loop~~（`stdio.cljc` 着地済み）、
