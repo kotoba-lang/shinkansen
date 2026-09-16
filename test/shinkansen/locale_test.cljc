@@ -1,5 +1,6 @@
 (ns shinkansen.locale-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
+            [clojure.string :as str]
             [shinkansen.locale :as locale]
             [shinkansen.publish :as publish]))
 
@@ -92,3 +93,23 @@
     ;; and the non-self-contained one is refused, by name
     (is (false? (:self-contained (first bad))))
     (is (= ["https://cdn.example.com/x.js"] (:external (:manifest (first bad)))))))
+
+(deftest exact-substitution-replaces-whole-nodes-only
+  ;; plain mode turns 送信 inside 送信中 into Send中 (measured 2026-09-16 on a
+  ;; 550-text-node document); exact mode replaces whole text nodes,
+  ;; attribute values and script literals, longest source first.
+  (let [html "<p>送信</p><span title=\"送信\">送信中</span><script>var a=\"送信\";var b='送信中';t(`送信`)</script><b> 送信 </b><i>送信する</i>"
+        strings {"送信" "Send" "送信中" "Sending"}
+        out (locale/substitute html {:exact? true :strings strings})]
+    (is (= "<p>Send</p><span title=\"Send\">Sending</span><script>var a=\"Send\";var b='Sending';t(`送信`)</script><b> Send </b><i>送信する</i>" out))
+    (is (str/includes? (locale/substitute html {:strings strings}) "Send中") "plain mode is the hazard exact mode removes"))
+  (testing "regex characters in the source and group-like text in the target are literal"
+    (is (= "<p>ok $1 &amp; done</p><script>x(\"ok $1 &amp; done\")</script>"
+           (locale/substitute "<p>a.b (x)</p><script>x(\"a.b (x)\")</script>"
+                              {:exact? true :strings {"a.b (x)" "ok $1 &amp; done"}}))))
+  (testing "a quote in the target is escaped inside a script literal, not in a text node"
+    (is (= "<p>say \"hi\"</p><script>x(\"say \\\"hi\\\"\")</script>"
+           (locale/substitute "<p>こんにちは</p><script>x(\"こんにちは\")</script>"
+                              {:exact? true :strings {"こんにちは" "say \"hi\""}}))))
+  (testing "an untranslated node passes through as source text, never blank"
+    (is (= "<p>未訳</p>" (locale/substitute "<p>未訳</p>" {:exact? true :strings {"x" "y"}})))))

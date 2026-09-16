@@ -151,6 +151,17 @@ locale negotiation は document ではなく HOST/edge に属する。shinkansen
 js / event は host の権限（§1.3）のまま —— framework は DOM capability を足さない。runtime は
 文字列で、host が自分の file として配るか 1 度 inline する。
 
+### 2.3b′ 翻訳は rendered document への substitution（`locale/substitute :exact?`、2026-09-16）
+
+オーナー指示「翻訳対応して」。cloud-itonami-app の document は text node 550 / attribute 107 /
+inline script literal 1,297 の日本語を持つ。`substitute` の plain mode は部分一致（「送信」が
+「送信中」の中で「Send中」になる）なので、**`:exact? true`** を足した: source は text node 全体
+（`>src<`、前後空白は保つ）・attribute 値（`="src"`）・script literal（`'src'` / `"src"`）の
+いずれか**丸ごと**にだけ当たり、長い source から先に置換する。regex 文字は quote、target の `$1`
+は literal、script literal 内の引用符は escape。訳の無い node は source のまま残る（空にしない）。
+表は rendered document から抽出した `{ja en}` の EDN。template literal（`` `…${x}…` ``）は
+対象外 —— それは残数として測る。
+
 ### 2.3c theme と locale は framework の選択（`shinkansen.theme` / `shinkansen.locale` の browser 側、2026-09-16）
 
 オーナー指示「言語切り替え, dark, light, system theme switcher も統合」。同日の実測: theme の
