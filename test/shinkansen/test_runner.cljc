@@ -23,7 +23,8 @@
             shinkansen.dev-test
             shinkansen.adapter-test
             shinkansen.interaction-test
-            shinkansen.theme-test))
+            shinkansen.theme-test
+            shinkansen.invoke-test))
 
 (def totals (atom {:tests 0 :asserts 0 :fail 0 :error 0}))
 (defonce ^:private counts (atom {:n 0}))
@@ -59,7 +60,8 @@
                    'shinkansen.routes-test 'shinkansen.actions-test
                    'shinkansen.load-test 'shinkansen.render-test
                    'shinkansen.dev-test 'shinkansen.adapter-test
-                   'shinkansen.interaction-test 'shinkansen.theme-test]]
+                   'shinkansen.interaction-test 'shinkansen.theme-test
+                   'shinkansen.invoke-test]]
     (run-tests ns-name))
   (set! t/report orig-report)
   (let [{:keys [tests asserts fail error]} @totals]

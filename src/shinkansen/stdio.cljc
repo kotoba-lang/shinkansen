@@ -57,11 +57,16 @@
                    (http-get-text (str "https://" cid ".ipfs.yataverse.com/"))
                    (js/Promise.resolve {:ok true :cid cid
                                          :gateway (str "https://" cid ".ipfs.yataverse.com/")})))
-   :lake-dispatch (fn [_]
+   :lake-dispatch (fn [envelope]
                     ;; No app is attached in R0 — the dispatch tool is declared
                     ;; and honestly answers not-implemented (ADR: declared but
-                    ;; unimplemented must be visible, not silent).
-                    (js/Promise.resolve {:ok false :error "no app attached yet (R0)"}))})
+                    ;; unimplemented must be visible, not silent). An attached
+                    ;; app answers (invoke/dispatch decl envelope {…:authorize-fn})
+                    ;; and nothing else: without an authorizer bound, invoke
+                    ;; refuses :no-authorizer — it never appends because the
+                    ;; call arrived.
+                    (js/Promise.resolve {:ok false :error "no app attached yet (R0)"
+                                         :envelope (dissoc envelope :grant)}))})
 
 (defn- write-json [obj]
   (println (js/JSON.stringify (clj->js obj))))

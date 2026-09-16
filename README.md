@@ -28,6 +28,25 @@ guest returns an inert document; the host (dom-gpu renderer, browser host,
 Worker) renders it and owns every effect. This is the shitsuke boundary
 unchanged — shinkansen does not add a DOM capability wire.
 
+## Five axes, one envelope (SPEC §1.5–1.8, 2026-09-16)
+
+A request raises five questions and five different mechanisms answer them —
+none is a stand-in for another:
+
+    who    principal   DID          what   artifact   CID
+    where  origin      Web origin   may    grant      Biscuit (an upper bound, not authority)
+    do     effect      effect request
+
+`shinkansen.invoke` is the one shape every transport (HTTP, MCP, CLI) carries —
+`{:artifact cid :principal did :grant … :input {:kind :query|:action|:event …}}` —
+and the seam where authority is decided: an injected `authorize-fn` sees
+`{:principal :artifact :grant :effect}` and **nothing about where the call
+came from**. No authorizer is a refusal (`:no-authorizer`), not a pass. The
+framework parses no Biscuit and holds no policy; that is `kotoba-lang/authority`
+and `org-biscuitsec`. A URL path is a name that resolves to an artifact — the
+same CID is reachable through N names on N origins, and none of them is its
+identity or its authority.
+
 ## The four planes (ADR-2609092600)
 
     identity  ipfs://{cid}                       immutable, the only address an app records
@@ -43,9 +62,12 @@ and cannot claim a CID.
 ## Repo layout
 
     docs/SPEC.md                   仕様（設計原理・モジュール契約・検証・次の一段）
-    src/shinkansen/publish.cljk    view/document → CID (both planes), fail-closed
-    src/shinkansen/state.cljk      db value → CID chain (Unison-style content addressing)
-    src/shinkansen/mcp.cljk        MCP tool surface (stdio JSON-RPC, kotoba-server shape)
+    src/shinkansen/publish.cljc    view/document → CID (both planes), fail-closed
+    src/shinkansen/state.cljc      db value → CID chain (Unison-style content addressing)
+    src/shinkansen/invoke.cljc     invocation envelope (query / action / event) + the authority seam
+    src/shinkansen/routes.cljc     name → artifact resolver (the path is a reference, not identity)
+    src/shinkansen/actions.cljc    post-authorization declaration check + chain entry
+    src/shinkansen/mcp.cljc        MCP tool surface (stdio JSON-RPC, kotoba-server shape); lake_dispatch is an invoke transport
     src/shinkansen/interaction.cljc  browser contract (data-action / run stream / hydrate / theme / locale) + one runtime
     src/shinkansen/theme.cljc      light / dark / system — storage, attribute, head script, theme/set
     src/shinkansen/viewport.cljc   multi-screen-size contract (viewport meta + phone band)
@@ -59,7 +81,7 @@ and cannot claim a CID.
 ```bash
 npm test           # nbb runner: requires each test ns explicitly (nbb 1.5.212
                    # no longer auto-requires), prints per-ns + TOTAL summary,
-                   # exits non-zero on failure. 76 tests / 211 assertions.
+                   # exits non-zero on failure. 136 tests / 469 assertions.
 ```
 
 ## MCP stdio server
@@ -70,8 +92,9 @@ npm run mcp        # JSON-RPC over stdin/stdout; lake = https://yataverse.com
 ```
 
 Four tools: `lake_list` / `lake_head` / `lake_fetch` / `lake_dispatch`.
-`lake_dispatch` honestly answers "no app attached yet (R0)" — declared but
-unimplemented must be visible.
+`lake_dispatch` takes `artifact` + `event`; the caller's principal and grant
+are the session's (ctx), never tool arguments. It honestly answers "no app
+attached yet (R0)" — declared but unimplemented must be visible.
 
 ## Status
 
