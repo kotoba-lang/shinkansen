@@ -63,6 +63,12 @@
                        measured 2026-09-15: the top bar scrolled away with
                        the content and the account menu opened IN FLOW,
                        pushing the sidebar apart instead of floating over it
+    :actions-declared  every `data-action` a control names is an event the
+                       shinkansen.actions declaration (ctx :actions)
+                       declares — the browser and the agent share one
+                       dispatch vocabulary, so a control naming an
+                       undeclared id is a dead control the surface would
+                       refuse by name (shinkansen.interaction, 2026-09-16)
 
   Fail-closed: an axis that CANNOT be measured (no asset set supplied for
   :assets-resolve) is reported under :unmeasured and excluded from the
@@ -73,6 +79,7 @@
   Visibility is structural (hidden= attribute, closed <details>) — what a
   browser hides by default the idle-state axes do not count."
   (:require [clojure.string :as str]
+            [shinkansen.interaction :as interaction]
             [shinkansen.viewport :as viewport]))
 
 ;; --- a minimal HTML walker -----------------------------------------------
@@ -591,7 +598,32 @@
                              (conj "data-chrome=float has no position:absolute|fixed + z-index rule addressed to it — the menu opens in flow and pushes the layout apart instead of floating over it"))]
                    (if (empty? bad)
                      {:score 1.0}
-                     {:score 0.0 :finding (str/join "; " bad)})))))}])
+                     {:score 0.0 :finding (str/join "; " bad)})))))}
+
+   {:id :actions-declared :weight 0.06
+    :title "Every data-action control names a declared event (shinkansen.interaction)"
+    ;; ctx :actions is the shinkansen.actions declaration ({:events {…}}).
+    ;; A document whose controls name actions but arrives without the
+    ;; declaration cannot be judged and says so (unmeasured, not a pass).
+    :check (fn [{:keys [html]} {:keys [actions]}]
+             (let [named (interaction/document-actions html)]
+               (cond
+                 ;; no control names an action: the axis does not apply.
+                 ;; NOT a 1.0 — a free point on a document with no controls
+                 ;; would lift every static page's score for nothing
+                 ;; (measured: the account-like fixture rose 39.6 → 40.8) —
+                 ;; and not :unmeasured either, which means "could not tell".
+                 (empty? named) {:not-applicable "the document names no data-action control"}
+                 (nil? actions)
+                 {:unmeasured "controls name data-action ids but no :actions declaration was supplied — pass the shinkansen.actions decl as ctx :actions"}
+                 :else
+                 (let [missing (interaction/undeclared-actions actions html)]
+                   (if (empty? missing)
+                     {:score 1.0}
+                     {:score (double (/ (- (count named) (count missing)) (count named)))
+                      :finding (str (count missing) " of " (count named) " data-action id(s) have no declared event: "
+                                    (str/join ", " (map interaction/event-id->action missing))
+                                    " — a control the dispatch surface refuses by name (shinkansen.actions/validate-event :undeclared-event)")})))))}])
 
 ;; --- scoring --------------------------------------------------------------
 
@@ -603,7 +635,8 @@
    :locales (set of locale path segments). Returns
    {:file :overall 0..100 :axes [...] :findings [...] :unmeasured [...]}.
    Overall is the weighted mean over MEASURED axes only; unmeasured axes are
-   listed, never scored. A referenced same-origin stylesheet that neither
+   listed, never scored; an axis that answers :not-applicable (the document
+   has nothing of that kind) is neither scored nor listed. A referenced same-origin stylesheet that neither
    :css nor :stylesheets supplies makes the CSS-dependent axes unmeasured —
    the score-site lesson from 90-docs/design-quality iteration 03: scoring
    the HTML shell alone undercounts silently."
@@ -622,7 +655,10 @@
                         (let [r (check doc ctx)]
                           (merge {:id id :title title :weight weight} r)))
                       axes)
-        measured (remove :unmeasured results)
+        ;; :not-applicable axes (nothing of their kind in the document) are
+        ;; excluded from the mean like :unmeasured ones, but are not
+        ;; reported as unmeasured — the judge could tell, there was nothing.
+        measured (remove #(or (:unmeasured %) (:not-applicable %)) results)
         total (reduce + (map :weight measured))
         weighted (reduce + (map #(* (:score %) (:weight %)) measured))]
     {:file file

@@ -93,4 +93,6 @@
 (def done
   "Rows that CLOSED with this increment or earlier — kept so the map
   cannot silently regress to 'everything is missing'."
-  [{:axis :e :name :responsive-contract :closed-by "shinkansen.viewport + publish/manifest gate"}])
+  [{:axis :e :name :responsive-contract :closed-by "shinkansen.viewport + publish/manifest gate"}
+   {:axis :c :name :browser-dispatch-surface
+    :closed-by "shinkansen.interaction — data-action / data-params on the control, ONE delegated runtime, the same event ids shinkansen.actions declares; audit :actions-declared measures the gap (2026-09-16)"}])

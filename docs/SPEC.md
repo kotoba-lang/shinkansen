@@ -80,8 +80,9 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
     src/shinkansen/mcp.cljc      MCP tool 宣言 + dispatch（純粋、handler 注入）
     src/shinkansen/locale.cljc   locale negotiation 契約（cookie ベース、path 非依存、純粋）
     src/shinkansen/viewport.cljc multi-screen-size 契約（viewport meta + xs band、静的 audit）
-    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（16 軸、理由付き finding）
+    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（19 軸、理由付き finding）
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
+    src/shinkansen/interaction.cljc browser 側の契約（data-action / data-params、run stream、hydrate）+ 1 本の runtime
     test/                        76 tests / 211 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
@@ -128,6 +129,27 @@ cookie を書く**。
 locale negotiation は document ではなく HOST/edge に属する。shinkansen はその
 純粋契約だけを提供する（render はしない、cookie を読む IO もしない）。
 
+### 2.3b browser 側の interaction は framework の契約（`shinkansen.interaction`、2026-09-16）
+
+実測: cloud-itonami-app の `interaction.js` は 14,352 行で、共通 component の `script`
+（cloud-kotoba-dds shell / chat / bot）とも重複して、hook で要素を探す・要素ごとに listener を
+付ける・list を container に描く・`data: <json>` の run stream を読む・mount を hydrate する、を
+それぞれ手で書いている。framework が持つのは**契約**と**runtime 1 本**、host が持つのは
+「action が何をするか」「stream の event が何を意味するか」「mount に何を描くか」。
+
+1. **action**: control は `data-action="<event-id>"`（+ 任意の `data-params` JSON）を名乗る。
+   runtime は click / submit の delegated listener を 1 本だけ持ち、host が `shinkansen.on(id, fn)`
+   で登録した handler を `(params, element, event)` で呼ぶ。id は `shinkansen.actions` が宣言する
+   event id と同じ語彙（`:cart/add` ↔ `"cart/add"`）。hiccup 側は `interaction/action-attrs`。
+2. **run stream**: `shinkansen.streamRun(url, {onEvent, onClose, onError}, init)` は Hermes 形
+   （`data: <json>`、`event` 名付き frame、comment 行は keepalive）の SSE を読む。JVM-free Hermes
+   gateway と Bot loop が話す wire なので、chat client はここで 1 度だけ読む。`{abort()}` を返す。
+3. **hydrate**: `shinkansen.hydrate(name, fn)` は `[data-hydrate="<name>"]` の未 hydrate な要素に
+   `fn` を当てて印を付ける。mount は server が描き、browser は埋めるだけ。
+
+js / event は host の権限（§1.3）のまま —— framework は DOM capability を足さない。runtime は
+文字列で、host が自分の file として配るか 1 度 inline する。
+
 ### 2.4 UI/UX document 契約は fitness function である（`shinkansen.audit` + `shinkansen.coscientist`）
 
 オーナー指示（2026-09-15、`kotoba.cloud/account` の実測「uiux 品質があまり高くない」）:
@@ -168,6 +190,13 @@ framework の改善は co-scientist の approach で進める —— **測れな
   読み上げもできない。`<pre hidden>`（script が埋める JSON dump）は data であって block ではなく
   数えない。score は名乗った block の割合、finding は件数と直し方。`:pre-overflow` はそのまま
   「scroll か wrap できること」を測り続ける。
+- **2026-09-16（オーナー指示「interaction などを共通化」）で足した 1 軸**: `:actions-declared` —
+  document の control が名乗る `data-action` id は、`shinkansen.actions` の宣言（ctx `:actions`）に
+  在る event である。browser と agent の dispatch 語彙は 1 つなので、宣言に無い id を名乗る
+  control は surface が `:undeclared-event` で拒否する死んだ control。control が 1 つも無い
+  document は **`:not-applicable`**（score でも unmeasured でもなく平均から外れる —— 1.0 を
+  配ると control の無い静的頁が全部持ち上がる。実測: account-like fixture 39.6 → 40.8）。
+  宣言無しで control が在る document は `:unmeasured`。
 - **1 本の emit tree を複数 host が分け合うとき**、document ごとの `:ctx` を shared ctx に
   merge する（docs host の page は自分の surface の `:documents` に対して link を解決する）。
 - **測れない軸は pass にしない**: asset set を渡さないと `:assets-resolve` は
