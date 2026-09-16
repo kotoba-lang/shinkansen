@@ -139,19 +139,40 @@
   (dev/error-document {:path path :reason reason :detail detail
                        :cid-fn (or cid-fn (fn [_] nil))}))
 
+(defn etag-of
+  "The strong ETag a CID makes: the quoted CID."
+  [cid]
+  (when cid (str "\"" cid "\"")))
+
+(defn document-headers
+  "The headers a NAME host answers for a document whose bytes have `cid`:
+  ETag = the CID, Link rel=canonical at ipfs://, and a Cache-Control that
+  revalidates (a name is mutable) unless the document declared :isr. Exposed
+  so a host that serves bytes some other way (a Worker's asset binding) still
+  answers the same identity headers — cloud-kotoba/app-kotoba-cloud, 2026-09-16."
+  [{:keys [cid mode revalidate-seconds]}]
+  (cond-> {"cache-control" (case mode
+                             :isr (str "public, max-age=" (or revalidate-seconds 0)
+                                       ", stale-while-revalidate=" (or revalidate-seconds 0))
+                             "no-cache")}
+    cid (assoc "etag" (etag-of cid)
+               "link" (str "<ipfs://" cid ">; rel=\"canonical\""))))
+
+(defn not-modified?
+  "Does the request's If-None-Match name this CID? Then the bytes need not
+  travel — a name host can answer 304 from the receipt alone, before it
+  touches the bytes."
+  [if-none-match cid]
+  (boolean (and cid if-none-match
+                (some #(= (str/trim %) (etag-of cid)) (str/split (str if-none-match) #",")))))
+
 (defn- html-response [status html {:keys [cid mode revalidate-seconds dev? etag-in]}]
-  (let [etag (when cid (str "\"" cid "\""))
-        html (if dev? (with-reload html) html)]
-    (if (and etag (= etag-in etag) (= 200 status))
-      {:status 304 :headers {"etag" etag} :body ""}
+  (let [html (if dev? (with-reload html) html)]
+    (if (and (= 200 status) (not-modified? etag-in cid))
+      {:status 304 :headers {"etag" (etag-of cid)} :body ""}
       {:status status
-       :headers (cond-> {"content-type" "text/html; charset=utf-8"
-                         "cache-control" (case mode
-                                           :isr (str "public, max-age=" (or revalidate-seconds 0)
-                                                     ", stale-while-revalidate=" (or revalidate-seconds 0))
-                                           "no-cache")}
-                  etag (assoc "etag" etag
-                              "link" (str "<ipfs://" cid ">; rel=\"canonical\"")))
+       :headers (merge {"content-type" "text/html; charset=utf-8"}
+                       (document-headers {:cid cid :mode mode :revalidate-seconds revalidate-seconds}))
        :body html})))
 
 (defn- serve-document

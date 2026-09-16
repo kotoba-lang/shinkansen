@@ -49,3 +49,16 @@
         r (routes/resolve-path tree2 "/docs")]
     (is (not (:ok r)))
     (is (= :no-document-at-node (:reason r)))))
+
+(deftest a-flat-emit-becomes-a-tree-and-resolves
+  (let [tree (routes/paths->tree [{:path "/" :document :home}
+                                  {:path "/docs/" :document :docs}
+                                  {:path "/docs/reference/quickstart/" :document :qs}
+                                  {:path "/ja/billing/" :document :ja-billing}])]
+    (is (= :home (:document (routes/resolve-path tree "/"))))
+    (is (= :docs (:document (routes/resolve-path tree "/docs"))) "trailing slash is the same name")
+    (is (= :qs (:document (routes/resolve-path tree "/docs/reference/quickstart/"))))
+    (is (= :no-document-at-node (:reason (routes/resolve-path tree "/docs/reference"))) "a pass-through node says so")
+    (is (= :ja-billing (:document (routes/resolve-path tree "/ja/billing"))))
+    (is (= :no-match (:reason (routes/resolve-path tree "/nope"))))))
+

@@ -82,3 +82,25 @@
               (if-let [child (some #(when (match-node % segs) %) (:children node))]
                 (recur child segs layouts params matched)
                 {:ok false :reason :no-match :deepest (last matched)}))))))))
+
+(defn- insert-document [node segs document]
+  (if (empty? segs)
+    (assoc node :document document)
+    (let [[s & more] segs
+          children (vec (or (:children node) []))
+          idx (some (fn [[i c]] (when (= (:path c) s) i)) (map-indexed vector children))
+          child (insert-document (if idx (nth children idx) {:path s}) more document)]
+      (assoc node :children (if idx (assoc children idx child) (conj children child))))))
+
+(defn paths->tree
+  "A route tree from a flat list of documents `[{:path \"/a/b/\" :document x} …]`
+  — what a static emit (or an adapter's receipts) already knows. Every
+  segment becomes a node; a document sits on the node its path ends at.
+  \"/\" is the root's own document. Nodes without a document are pass-
+  through (resolve-path answers :no-document-at-node for them, by name).
+  Trailing slashes are the same name (\"/a/b/\" = \"/a/b\")."
+  [documents]
+  (reduce (fn [tree {:keys [path document]}]
+            (insert-document tree (segmentize path) document))
+          {:path "/"}
+          documents))
