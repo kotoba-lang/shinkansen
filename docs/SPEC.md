@@ -374,6 +374,14 @@ model>`（**この app の wire**であって framework の wire ではない）
 form）、`/todos`（:ssr）、`/todos/:id`（:ssr + path param）、`POST /invoke`。root 鍵は demo 用の固定 seed ——
 本番は `auth.kotobase.net/v1/biscuit/token` で発行し root 秘密鍵を配らない。
 
+**product binding（kotoba.cloud、2026-09-16）**: bytes を asset binding が配る Worker は `host/handle` に
+document を渡せない。そのために公開した seam が `host/document-headers`（ETag = CID / Link / no-cache）、
+`host/not-modified?`（receipt だけで 304）、`routes/paths->tree`（flat な emit → tree）。app 側の
+`content-identity` ns が render で receipts を書き、Worker の `route-static` が name を tree で解決して
+同じ header を答える。`POST /v1/invoke` は `host/handle-invoke` に app の grant-fn（`Authorization: Biscuit`）
+と authorize-fn（wire verify → `->grant` → lattice、kind → `kotoba://can/data:read|write`、artifact = receipt
+set）を渡す。workerd で 14 check（ETag、304 null body、no-grant、test root の token は signature で拒否）。
+
 実装で見つかった床割れ: `actions/dispatch` の `(resolve 'shinkansen.state/db-text)` は nbb では他 ns が
 state を load していないと **nil** を返す。suite では state-test が load するので緑、走る host では
 `null.call`（host-node-check の初回で発見）。`require` に置き換えた。**suite の緑は「駆動された」ではない**。
@@ -622,9 +630,13 @@ visual shell を複製しないこと (ADR-2609092600 :document の自己完結�
    session の principal は CACAO（人）/ DID（agent）から、grant は `auth.kotobase.net/v1/biscuit/token`
    から。`:chain/append` / `:app/query` / `:app/assert` を `lang/capability-semantics.edn` の `:kinds` に
    登録する（無ければ `:unknown-kind :deny`）。**framework 側に Biscuit parser を置かない。**
-3. **product が reference host を通る**: cloud-kotoba/app-kotoba-cloud（か yataverse lake index）の配信を
-   routes → load → render → adapter に載せ、`POST /invoke` を本番 host に置く（cookie は使わない、§1.6）。
-   `maturity.cljc` の `:driven-by-host` 行を `:driven-by-product` にするのはこれだけ。
+3. ~~product が reference host を通る~~ → **着地（2026-09-16、kotoba.cloud）**: app-kotoba-cloud の render が
+   全 document を `adapter/adapt`（publish gate → CID receipt）に通し `/.well-known/shinkansen/receipts.json` を
+   出す。Worker は `routes/paths->tree` で name → document を解決し、`host/document-headers` /
+   `host/not-modified?` で **ETag = CID / Link rel=canonical ipfs:// / 304 を receipt だけで**答える。
+   `POST /v1/invoke` が seam を authn の Biscuit wire + pinned root 公開鍵 + `biscuit.authority/->grant` +
+   `authority.chain` に束ねる（data:read の token が receipt set を query できる。chain は無いので action は
+   422）。残り: layouts と render は app 自身の site.cljk のまま（tree は名付けるだけ）、bytes は Static Assets。
 4. **chain entry の receipt 署名**: §1.5 の既知の限界（`:prev` / `:event` / `:principal` が hash 外）を
    authorizer の署名付き receipt で閉じるか、entry 全体を hash するかを実測して決める。
 5. ~~guest bridge~~（`bridge.cljc` 着地済み）、~~MCP stdio loop~~（`stdio.cljc` 着地済み）、
