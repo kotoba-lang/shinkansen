@@ -197,6 +197,19 @@ framework の改善は co-scientist の approach で進める —— **測れな
   document は **`:not-applicable`**（score でも unmeasured でもなく平均から外れる —— 1.0 を
   配ると control の無い静的頁が全部持ち上がる。実測: account-like fixture 39.6 → 40.8）。
   宣言無しで control が在る document は `:unmeasured`。
+- **2026-09-16（オーナー実測「docs.kotoba.cloud/graph/ の uiux が崩れている」）で足した 1 軸**:
+  `:classes-styled` — document が要素に付けた class 名は、その document が運ぶ CSS（inline
+  `<style>` か、ctx `:stylesheets` で渡された same-origin stylesheet）の selector に当たっている。
+  上の marker 軸は document が**宣言した**もの（`data-chrome` / `data-action` / `data-lang`）しか
+  見ないので、shipped されない stylesheet 向けに書かれた markup は何も宣言せず何も落とさない ——
+  実測: `/docs/graph/` は marketing header / footer の markup を emit しながら token bridge しか
+  inline せず、54 class 中 27 に rule が無く、header は生リンクの羅列・skip link は出っぱなしのまま
+  audit は 98.3。selector だけを見る（`url(x.png)` の `.png` や宣言の `.5rem` は rule ではない）。
+  許容は **5 分の 1、ただし最低 1 つ**（rule の無い hook class は健全な頁にも在る。実測 3 / 58、
+  10 / 122）。超過分は線形に落ち、5 分の 3 で 0。class を 1 つも持たない document は
+  `:not-applicable`、stylesheet が渡されていなければ `:unmeasured`。finding は名前を sorted で
+  最大 12 個 + 件数、直し方は「shared shell（site-layout / docs-page）を通すか、書いた CSS を
+  inline する」。
 - **1 本の emit tree を複数 host が分け合うとき**、document ごとの `:ctx` を shared ctx に
   merge する（docs host の page は自分の surface の `:documents` に対して link を解決する）。
 - **測れない軸は pass にしない**: asset set を渡さないと `:assets-resolve` は

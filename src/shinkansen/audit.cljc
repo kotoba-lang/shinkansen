@@ -69,6 +69,17 @@
                        dispatch vocabulary, so a control naming an
                        undeclared id is a dead control the surface would
                        refuse by name (shinkansen.interaction, 2026-09-16)
+    :classes-styled    the class names the document puts on its elements
+                       are addressed by a rule in the CSS it ships (inline
+                       <style> or a supplied same-origin stylesheet) — a
+                       page whose header, nav and footer classes have no
+                       rule renders as bare links with the skip link in
+                       view, while every marker axis above stays green;
+                       measured 2026-09-16 on docs.kotoba.cloud/graph/:
+                       27 of 54 classes unstyled, audit 98.3 / 100. A
+                       few rule-less hook classes are normal (a fifth is
+                       tolerated); half the document is a stylesheet that
+                       was not shipped
 
   Fail-closed: an axis that CANNOT be measured (no asset set supplied for
   :assets-resolve) is reported under :unmeasured and excluded from the
@@ -623,7 +634,51 @@
                      {:score (double (/ (- (count named) (count missing)) (count named)))
                       :finding (str (count missing) " of " (count named) " data-action id(s) have no declared event: "
                                     (str/join ", " (map interaction/event-id->action missing))
-                                    " — a control the dispatch surface refuses by name (shinkansen.actions/validate-event :undeclared-event)")})))))}])
+                                    " — a control the dispatch surface refuses by name (shinkansen.actions/validate-event :undeclared-event)")})))))}
+
+   {:id :classes-styled :weight 0.10
+    :title "The document's class names have a rule in the CSS it ships"
+    ;; The marker axes above look for what a document DECLARES (data-chrome,
+    ;; data-action, data-lang). A document built for a stylesheet it does
+    ;; not ship declares nothing and fails nothing: docs.kotoba.cloud/graph/
+    ;; scored 98.3 while its header was a bare list of links (2026-09-16).
+    ;; This axis asks the plain question — of the classes the body uses,
+    ;; how many does any selector in the shipped CSS name? Selectors only:
+    ;; a `.png` inside url() or a `.5rem` in a declaration is not a rule.
+    :check (fn [{:keys [els css-html css-missing]} _]
+             (let [used (->> els
+                             (mapcat #(str/split (str/trim (get-in % [:attrs "class"] "")) #"\s+"))
+                             (remove str/blank?)
+                             distinct
+                             sort)]
+               (cond
+                 (empty? used) {:not-applicable "the document names no class"}
+                 (seq css-missing)
+                 {:unmeasured (str "external stylesheet(s) not supplied: " (str/join ", " css-missing)
+                                   " — the rules live there; pass :css or ctx :stylesheets")}
+                 :else
+                 (let [selectors (->> (style-blocks css-html)
+                                      (mapcat #(re-seq #"([^{}]+)\{" %))
+                                      (map second))
+                       styled (into #{} (mapcat #(map second (re-seq #"\.(-?[A-Za-z_][\w-]*)" %))) selectors)
+                       unstyled (vec (remove styled used))
+                       n (count used)
+                       ;; a fifth of the names — and always at least one —
+                       ;; may be hooks with no rule (BEM leaves, a class the
+                       ;; script reads; measured on healthy kotoba.cloud
+                       ;; pages: 3 of 58, 10 of 122); beyond that the score
+                       ;; falls linearly, reaching 0 when three fifths of
+                       ;; the document is a stylesheet that was not shipped
+                       allowed (max 1 (int (Math/floor (* 0.2 n))))
+                       over (- (count unstyled) allowed)
+                       score (if (<= over 0) 1.0 (max 0.0 (- 1.0 (/ over (* 0.4 n)))))]
+                   (if (= 1.0 score)
+                     {:score 1.0}
+                     {:score (double score)
+                      :finding (str (count unstyled) " of " (count used) " class name(s) the document uses have no rule in the CSS it ships: "
+                                    (str/join ", " (take 12 unstyled))
+                                    (when (> (count unstyled) 12) (str ", +" (- (count unstyled) 12) " more"))
+                                    " — the elements render unstyled (a header that is a bare list of links, a skip link that stays in view); the document was built for a stylesheet it does not ship — emit it through the shared shell or inline the CSS it was written against")})))))}])
 
 ;; --- scoring --------------------------------------------------------------
 

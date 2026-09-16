@@ -11,6 +11,7 @@
        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">"
        "<script src=\"/js/session.js\" defer></script>"
        "<style>.kc-sb{position:fixed;inset-block:0;inset-inline-start:0;inline-size:15rem}"
+       ".dads-button{display:inline-flex}"
        "@media(max-width:64rem){.kc-sb{position:static}}"
        "@media(max-width:30rem){.kc-sb{padding:0}}</style></head>"))
 
@@ -26,7 +27,9 @@
        "</main></body></html>"))
 
 (def account-like-doc
-  ;; every measured failure of kotoba.cloud/account on 2026-09-15, in one document
+  ;; every measured failure of kotoba.cloud/account on 2026-09-15, in one
+  ;; document — plus the docs.kotoba.cloud/graph/ one of 2026-09-16: the
+  ;; nav, sections and buttons wear class names no shipped rule addresses
   (str "<!doctype html><html lang=\"ja\"><head>"
        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">"
        "<script src=\"/js/session.js\" defer></script>"
@@ -34,20 +37,20 @@
        "body{padding-inline-start:15rem}.kc-sb-main{margin-inline-start:15rem}"
        "@media(max-width:64rem){.kc-sb{position:static}}"
        "@media(max-width:30rem){.kc-sb{padding:0}}</style></head><body>"
-       "<nav>"
-       (apply str (for [i (range 6)] (str "<a href=\"/d" i "/\">項目" i "</a>")))
+       "<nav class=\"kc-nav\">"
+       (apply str (for [i (range 6)] (str "<a class=\"kc-nav__item\" href=\"/d" i "/\">項目" i "</a>")))
        "<a href=\"/account\" data-current=\"true\">接続トークン (PAT)</a>"
        "<a href=\"/ja/#research-models\">モデル</a>"
        "<a href=\"/account\" data-current=\"true\">利用とインサイト</a>"
        "<a href=\"/account\" data-current=\"true\">アカウント</a>"
        "</nav>"
        "<main id=\"main\" class=\"kc-sb-main\"><h1>アカウント管理</h1>"
-       "<section><h2>本人確認（カード認証 / Stripe Identity）</h2>"
+       "<section class=\"kc-console__section\"><h2>本人確認（カード認証 / Stripe Identity）</h2>"
        "<span class=\"ck-console__label\">USERNAME</span><span data-state=\"loading\">読み込んでいます…</span>"
        "<span class=\"ck-console__label\">STABLE PRINCIPAL</span><span data-state=\"loading\">読み込んでいます…</span>"
        "<span data-state=\"loading\">読み込んでいます…</span><span data-state=\"loading\">読み込んでいます…</span>"
        "<p>" (apply str (repeat 130 "説")) "</p><p>" (apply str (repeat 130 "明")) "</p>"
-       "<button id=\"account-ekyc-start\" disabled>本人確認を開始</button>"
+       "<button class=\"kc-console__action\" id=\"account-ekyc-start\" disabled>本人確認を開始</button>"
        "<button id=\"account-refresh\">状態を更新</button></section>"
        "<section><h2>組織（Org DID）</h2><button id=\"account-refresh\">状態を更新</button>"
        "<button id=\"account-org-create\" disabled>組織を作成</button></section>"
@@ -107,6 +110,7 @@
     (testing "notes" (is (str/includes? (f :note-density) "2 paragraphs over 120 characters")))
     (testing "locale" (is (str/includes? (f :locale-path-links) "/ja/#research-models")))
     (testing "fixed" (is (str/includes? (f :fixed-anchor) "position:fixed without left/right/inset-inline on: .kc-sb")))
+    (testing "classes" (is (str/includes? (f :classes-styled) "5 of 6 class name(s) the document uses have no rule in the CSS it ships: ck-console__label, kc-console__action, kc-console__section, kc-nav, kc-nav__item")))
     (is (< (:overall r) 40.0) (str "overall " (:overall r)))))
 
 (deftest unmeasured-assets-are-not-a-pass
@@ -272,6 +276,43 @@
                                             (:unmeasured (audit/score-document {:file "c" :html (str "<html><head><link rel=\"stylesheet\" href=\"/css/site.css\"></head><body><main id=\"main\">" top "</main></body></html>")} ctx)))))
                        "the chrome's position rules live there")
         "declared chrome with its stylesheet missing is unmeasured, not passed")))
+
+(deftest class-names-have-a-rule-in-the-shipped-css
+  ;; the failure this axis was seeded from: docs.kotoba.cloud/graph/ emitted
+  ;; the marketing header/footer markup but inlined only the token bridge —
+  ;; 27 of 54 classes had no rule, the header was a bare list of links, the
+  ;; skip link stayed in view, and every marker axis stayed green (98.3)
+  (let [doc (fn [css body] (str "<html><head><style>" css "</style></head><body>" body "</body></html>"))
+        ctx {:assets #{} :documents #{} :csp :none}
+        run (fn [css body] (audit/score-document {:file "s" :html (doc css body)} ctx))
+        score (fn [css body] (:score (axis (run css body) :classes-styled)))
+        chrome "<header class=\"kc-header\"><nav class=\"kc-nav\"><a class=\"kc-nav__item\" href=\"/\">home</a></nav></header><main id=\"main\" class=\"kc-docs\"><p class=\"kc-docs__lead\">x</p></main><footer class=\"kc-footer\">f</footer>"]
+    (is (= 1.0 (score ".kc-header{display:flex}.kc-nav{display:flex}.kc-nav__item{color:red}.kc-docs{padding:1rem}.kc-docs__lead{margin:0}.kc-footer{display:grid}" chrome))
+        "every class the body names has a rule")
+    (is (= 1.0 (score "@media(max-width:30rem){.kc-header{display:block}}.kc-nav,.kc-nav__item{color:red}:is(.kc-docs,.kc-docs__lead){margin:0}.x .kc-footer{display:grid}" chrome))
+        "a rule inside @media, in a selector list, in :is(), or as a descendant still names the class")
+    (is (= 1.0 (score ".kc-header{display:flex}.kc-nav{display:flex}.kc-nav__item{color:red}.kc-docs{padding:1rem}.kc-docs__lead{margin:0}" chrome))
+        "one hook-like class without a rule (1 of 6, under a fifth) is tolerated")
+    (is (= "4 of 6 class name(s) the document uses have no rule in the CSS it ships: kc-footer, kc-header, kc-nav, kc-nav__item — the elements render unstyled (a header that is a bare list of links, a skip link that stays in view); the document was built for a stylesheet it does not ship — emit it through the shared shell or inline the CSS it was written against"
+           (:finding (axis (run ".kc-docs{padding:1rem}.kc-docs__lead{margin:0}" chrome) :classes-styled)))
+        "the graph-page shape: the body's own classes styled, the chrome's not — named, sorted, with why")
+    (is (= 0.0 (score ".kc-docs{padding:1rem}.kc-docs__lead{margin:0}" chrome)) "four of six is past three fifths: the floor")
+    (is (< 0.5 (score ".kc-header{display:flex}.kc-nav{display:flex}.kc-nav__item{color:red}.kc-docs{padding:1rem}" chrome) 0.7)
+        "two of six: one over the tolerance, scored on the way down (1 - 1/2.4)")
+    (is (= 0.0 (score "body{background:url(kc-header.png);margin:.5rem}" chrome))
+        "a class name inside a declaration (url(), a .5rem length) is not a rule for it")
+    (is (= "the document names no class" (:not-applicable (axis (run ".x{}" "<main id=\"main\"><p>no classes</p></main>") :classes-styled)))
+        "a document that names no class is not-applicable: neither scored nor listed")
+    (is (nil? (:score (axis (run ".x{}" "<main id=\"main\"><p>no classes</p></main>") :classes-styled))))
+    (is (empty? (filter #(= :classes-styled (:axis %)) (:unmeasured (run ".x{}" "<main id=\"main\"><p>no classes</p></main>")))))
+    (is (str/includes? (:why (first (filter #(= :classes-styled (:axis %))
+                                            (:unmeasured (audit/score-document {:file "s" :html (str "<html><head><link rel=\"stylesheet\" href=\"/css/site.css\"></head><body>" chrome "</body></html>")} ctx)))))
+                       "the rules live there")
+        "classes with their stylesheet missing are unmeasured, not passed")
+    (is (= 1.0 (:score (axis (audit/score-document {:file "s" :html (str "<html><head><link rel=\"stylesheet\" href=\"/css/site.css\"></head><body>" chrome "</body></html>")}
+                                                   (assoc ctx :stylesheets {"/css/site.css" ".kc-header{display:flex}.kc-nav{display:flex}.kc-nav__item{color:red}.kc-docs{padding:1rem}.kc-docs__lead{margin:0}.kc-footer{display:grid}"}))
+                             :classes-styled)))
+        "…and measured through the supplied stylesheet")))
 
 (deftest a-document-may-carry-its-own-ctx
   ;; one emit tree, two hosts: the docs-host page links /reference/ which
