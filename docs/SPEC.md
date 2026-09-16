@@ -182,9 +182,12 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
 - **theme / locale の記憶は entry（name）origin の性質**（`{name}.itonami.app`）。bytes origin
   （`{cid}.ipfs.*`）で開いた document の既定は theme = `system`（storage 無し = system、§2.3c の
   契約どおり）、locale = Accept-Language（cookie 無し = negotiate の第 2 優先）。
-- **cookie は host-only。** `locale/defaults` の `:cookie-attrs` に `:domain` は無い（`Domain=` を
-  省いた cookie は host-only）。`Domain=kotoba.cloud` のような parent-domain cookie は分離を壊すので
-  framework default にしない。`Path=` は security boundary ではない。
+- **cookie の既定は host-only。** `locale/defaults` の `:cookie-attrs` に `:domain` は無い（`Domain=` を
+  省いた cookie は host-only）。**parent-domain cookie を置いてよいのは preference（locale / theme の記憶）だけ**
+  —— 分離が守るのは authority であって好みではなく、product は name-origin family（docs. / blog. / console.）
+  を 1 つの選択で覆うために `:domain` を選べる（§2.3、app-kotoba-cloud の実測）。credential / session /
+  grant を `Domain=` で家族全体に配ることは framework のどの seam も許さない（grant は header で運ぶ、§1.6）。
+  `Path=` は security boundary ではない。
 - **wildcard trust を書かない**: CSP や CORS の allow list に `*.kotobase.net` を入れると 1 つの
   subdomain takeover が全 document に及ぶ。`:csp-allows-assets` 軸（§2.4）は document 自身の asset を
   許すかを見る軸であり、wildcard を推奨する軸ではない。
@@ -211,7 +214,7 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
     src/shinkansen/serve.cljc    node:http transport + dev loop（watch / rebuild / reload stream / error-as-500）
     src/shinkansen/maturity.cljc Next / SvelteKit / shadcn / Radix との比較を data で（declared vs driven、test で ns 実在を pin）
     examples/reference_app.cljc  本物の CID・本物の Biscuit authorizer を束ねた todo app（`npm run host`）
-    test/                        151 tests / 562 assertions, 0 fail 0 error（nbb via kbb）
+    test/                        154 tests / 575 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -242,13 +245,21 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
 cookie（Accept-Language フォールバック付き）で negotiate、言語切替は client 側で
 cookie を書く**。
 
-- `negotiate` — 優先順位: cookie > Accept-Language q 値 > :default。cookie 値は
-  :supported に無ければ **fail-closed で無視**（stale/forged cookie は host が
-  出してない locale に固定できない）。結果は `:source`（:cookie /
-  :accept-language / :default）を記録する。
+- `negotiate` — 優先順位: **`:explicit`**（`?lang=` や legacy locale path、読者が今使った switch）>
+  cookie > Accept-Language q 値 > **`:hint`**（環境の示唆: Cloudflare cf.country → locale）> :default。
+  **`:normalize`** は app の alias 表（zh → :zh-Hans、he-IL → :he）で、explicit / cookie / header の
+  各 tag に当たる。どの段も `:normalize` の答えが :supported に無ければ **fail-closed で無視**
+  （stale/forged cookie も細工した `?lang=` も host が出してない locale に固定できない）。結果は
+  `:source`（:explicit / :cookie / :accept-language / :hint / :default）を記録する。q=0 の tag は
+  「受け入れない」（RFC 9110）として捨てる（2026-09-16 まで 1.0 に昇格していた）。
+  3 つの seam は cloud-kotoba/app-kotoba-cloud が自前の locale.cljk で再導出していたもの（2026-09-16
+  実測）—— framework 側に置いて app が require する。
 - `set-cookie-header` — Set-Cookie 属性は**この 1 箇所**で serial 化。各 app が
-  属性を再導出するのを禁止（app-kotoba.cloud の kb_locale と同じ形: Path=/
-  SameSite=Lax/Secure/Max-Age=1y）。
+  serialization を再導出するのを禁止。**値は app のもの**: 既定は host-only（`:domain` 無し）だが、
+  locale は preference であって authority ではないので、docs. / blog. / console. を跨ぐ product は
+  `:domain` に registrable parent を置いてよい（app-kotoba-cloud、オーナー実測 2026-09-16: host-only では
+  host を跨ぐたびに言語が反転した）。host を跨いでよいのは preference だけで credential は決して跨がない
+  （§1.8）。
 - `substitute` — build 時生成 document の SSR seam。shitsuke の i18n table
   （sign_in_i18n 型: source 文字列 → request 時に localize）と対になる。未知の
   文字列は source のまま通す（翻訳欠落は空白ではなく source で見える — 内容は
@@ -460,7 +471,7 @@ framework の改善は co-scientist の approach で進める —— **測れな
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 151 tests / 562 assertions, 0 failures, 0 errors
+kbb -M:test        # 154 tests / 575 assertions, 0 failures, 0 errors
 ```
 
 ⚠ `test_runner` の `-main` に**列挙されていない** test ns は require されても走らない。

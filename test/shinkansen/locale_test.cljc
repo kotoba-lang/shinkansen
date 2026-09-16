@@ -127,3 +127,49 @@
 (deftest locale-runtime-carries-format-and-lang
   (doseq [needle ["format:lfmt" "lang:llang" "Intl.NumberFormat" "hasOwnProperty" "getAttribute('lang')"]]
     (is (str/includes? locale/runtime-fragment needle) needle)))
+
+(deftest explicit-switch-wins-and-hint-sits-above-the-default
+  (let [base {:supported [:en :ja :zh-Hans] :default :en}]
+    (testing "?lang= beats the cookie, fail-closed against :supported"
+      (is (= {:locale :ja :source :explicit}
+             (locale/negotiate (assoc base :explicit "ja" :cookie-value "en"))))
+      (is (= {:locale :en :source :cookie}
+             (locale/negotiate (assoc base :explicit "xx" :cookie-value "en")))))
+    (testing "an environment hint comes after Accept-Language and before the default"
+      (is (= {:locale :ja :source :hint}
+             (locale/negotiate (assoc base :hint :ja))))
+      (is (= {:locale :zh-Hans :source :accept-language}
+             (locale/negotiate (assoc base :hint :ja :accept-language "zh-Hans"))))
+      (is (= {:locale :en :source :default}
+             (locale/negotiate (assoc base :hint :xx)))
+          "an unsupported hint is ignored"))
+    (testing ":normalize is the app's alias table, applied to cookie, header and switch"
+      (let [alias (fn [v] (get {"zh" :zh-Hans "zh-tw" :zh-Hans "ja-jp" :ja "ja" :ja "en" :en} (str/lower-case (str v))))]
+        (is (= {:locale :zh-Hans :source :cookie}
+               (locale/negotiate (assoc base :cookie-value "zh" :normalize alias))))
+        (is (= {:locale :ja :source :accept-language}
+               (locale/negotiate (assoc base :accept-language "ja-JP,en;q=0.5" :normalize alias))))
+        (is (= {:locale :zh-Hans :source :explicit}
+               (locale/negotiate (assoc base :explicit "zh-TW" :normalize alias))))
+        (is (= {:locale :en :source :default}
+               (locale/negotiate (assoc base :cookie-value "ko" :normalize (fn [_] :ko))))
+            "what normalize answers must still be in :supported")))))
+
+(deftest q-zero-means-not-acceptable
+  (is (= {:locale :en :source :default}
+         (locale/negotiate {:supported [:en :ja] :default :en :accept-language "ja;q=0"}))
+      "a q=0 tag is dropped, not promoted to 1.0")
+  (is (= {:locale :ja :source :accept-language}
+         (locale/negotiate {:supported [:en :ja] :default :en :accept-language "ja;q=0.1"}))
+      "the boundary: any positive q is still a preference"))
+
+(deftest a-preference-cookie-may-span-the-name-origin-family
+  ;; the serialization is the framework's; the Domain is the app's decision
+  (is (= "kb_locale=ja; Domain=kotoba.cloud; Path=/; Max-Age=31536000; SameSite=Lax; Secure"
+         (locale/set-cookie-header {:name "kb_locale" :value "ja"
+                                    :cookie-attrs {:domain "kotoba.cloud" :path "/" :max-age 31536000
+                                                   :same-site "Lax" :secure true}})))
+  (is (not (str/includes? (locale/set-cookie-header {:name "x" :value "y" :cookie-attrs (:cookie-attrs locale/defaults)})
+                          "Domain="))
+      "the default stays host-only"))
+

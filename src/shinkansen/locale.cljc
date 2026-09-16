@@ -23,9 +23,16 @@
 
 (def ^:const defaults
   "The framework-default negotiation configuration. :cookie-attrs are the
-  ONE place the Set-Cookie attributes live — apps must not re-derive them
-  (the drift this prevents: one app with Missing SameSite, another with a
-  different max-age, a third session-scoped)."
+  ONE place the Set-Cookie attributes are SERIALIZED (`set-cookie-header`)
+  — apps must not re-derive the serialization (the drift this prevents:
+  one app with Missing SameSite, another with a different max-age, a third
+  session-scoped). The VALUES are the app's: the default is host-only (no
+  :domain) because a cookie is the wrong place for authority (SPEC §1.8);
+  a locale is a PREFERENCE, and a product whose readers cross docs. /
+  blog. / console. may set :domain to the registrable parent so one choice
+  covers the name-origin family (app-kotoba-cloud, owner-measured
+  2026-09-16: host-only flipped the language on every host change). What
+  may never span hosts is a credential — that rule is not this map's."
   {:cookie-name "shinkansen_locale"
    :cookie-attrs {:path "/" :same-site "Lax" :secure true :max-age 31536000}})
 
@@ -66,7 +73,9 @@
                    (let [q (if-let [m (and params (re-find #"q\s*=\s*([0-9.]+)" params))]
                              (parse-q (second m))
                              1.0)]
-                     [t (if (pos? q) q 1.0)]))))
+                     ;; q=0 is "not acceptable" (RFC 9110 §12.4.2): the tag is
+                     ;; dropped. Until 2026-09-16 it was promoted to 1.0.
+                     (when (pos? q) [t q])))))
          (sort-by second >))))
 
 (defn negotiate
@@ -77,29 +86,46 @@
                 :accept-language \"en;q=0.3,ja;q=0.9\"})
     → {:locale :ja :source :cookie}
 
-  Precedence: explicit cookie > Accept-Language q-values > :default.
-  The cookie value is NEVER trusted blindly: it must be in :supported or
-  it is ignored (fail-closed) and negotiation falls through to
-  Accept-Language, then the default — a stale/forged cookie cannot pin a
-  locale the host does not serve. The result records its :source so the
-  host can decide whether to (re)write the cookie."
-  [{:keys [supported default cookie-value accept-language]}]
-  (let [sup (supported-set supported)]
-    (cond
-      (and (string? cookie-value)
-           (contains? sup (str/trim cookie-value)))
-      {:locale (some (fn [l] (when (= (locale-name l) (str/trim cookie-value)) l)) supported)
-       :source :cookie}
+  Precedence: :explicit > cookie > Accept-Language q-values > :hint > :default.
 
-      :else
-      (if-let [hit (->> (parse-accept-language accept-language)
-                        (keep (fn [[t _]]
-                                (some (fn [l]
-                                        (when (= (str/lower-case (locale-name l)) t) l))
-                                      supported)))
-                        first)]
-        {:locale hit :source :accept-language}
-        {:locale default :source :default}))))
+    :explicit   the switch the reader just used (a `?lang=` query, a legacy
+                locale path) — highest, and still fail-closed against
+                :supported: an unknown value is ignored, never persisted
+    :hint       a locale the ENVIRONMENT suggests (Cloudflare cf.country →
+                locale) — below every stated preference, above the default
+    :normalize  (fn [string] → locale-or-nil): the app's alias table (zh →
+                :zh-Hans, he-IL → :he, ar_MA → :ar-MA). Applied to the
+                explicit value, the cookie value and every Accept-Language
+                tag. Default: exact match against :supported, case-
+                insensitive for the header
+
+  The three seams are what cloud-kotoba/app-kotoba-cloud had re-derived in
+  its own locale.cljk (2026-09-16); they are here so it can require this.
+
+  No value is trusted blindly: whatever :normalize answers must be in
+  :supported or it is ignored (fail-closed) — a stale/forged cookie or a
+  crafted ?lang= cannot pin a locale the host does not serve. The result
+  records its :source so the host can decide whether to (re)write the
+  cookie."
+  [{:keys [supported default cookie-value accept-language explicit hint normalize]}]
+  (let [sup (set supported)
+        exact (fn [v] (when (string? v)
+                        (let [v (str/trim v)]
+                          (some (fn [l] (when (= (locale-name l) v) l)) supported))))
+        norm (fn [v] (let [l (if normalize (normalize v) (exact v))]
+                       (when (contains? sup l) l)))
+        header-hit (fn [t] (let [l (if normalize
+                                     (normalize t)
+                                     (some (fn [l] (when (= (str/lower-case (locale-name l)) t) l)) supported))]
+                             (when (contains? sup l) l)))]
+    (or (when-let [l (norm explicit)] {:locale l :source :explicit})
+        (when-let [l (norm cookie-value)] {:locale l :source :cookie})
+        (when-let [l (->> (parse-accept-language accept-language)
+                          (keep (fn [[t _]] (header-hit t)))
+                          first)]
+          {:locale l :source :accept-language})
+        (when (contains? sup hint) {:locale hint :source :hint})
+        {:locale default :source :default})))
 
 (defn- attr-str
   "One attribute → its string, or nil when the attribute must be omitted:
