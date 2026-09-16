@@ -130,6 +130,8 @@
     (str name "=" value (when (seq attrs)
                           (str "; " (str/join "; " attrs))))))
 
+(declare re-quote)
+
 (defn substitute
   "Template substitution for build-time-generated documents — the SSR
   seam. Pairs with shitsuke's i18n table (the app-kotoba.cloud
@@ -143,17 +145,51 @@
   (a missing translation must be visible as source text, never blank) —
   fail-open for content, exactly because locale SELECTION above is
   fail-closed. Pure; the same substitution runs in SSR (bb/nbb) and in
-  a browser host."
-  [html {:keys [locale strings]}]
+  a browser host.
+
+  With `:exact? true` a source string is replaced only where it is the WHOLE
+  of a text node (`>src<`), an attribute value (`=\"src\"`), or a script
+  string literal (`'src'` / `\"src\"`), longest source first. Plain mode
+  replaces every occurrence and so turns 送信 inside 送信中 into Send中 —
+  measured 2026-09-16 on cloud-itonami-app, whose document has 550 text
+  nodes and 1,297 script literals that are exactly such phrases. Exact mode
+  is what a table extracted from a rendered document wants; plain mode
+  stays for {{TOKEN}}-shaped templates."
+  [html {:keys [locale strings exact?]}]
   (let [html (if (nil? html) "" (str html))
         html (if locale
                (str/replace html #"\{\{LOCALE\}\}" (str locale))
                html)]
-    (if strings
+    (cond
+      (not strings) html
+      exact?
+      (reduce (fn [h [src localized]]
+                (let [src (str src) localized (str localized)
+                      quoted (re-quote src)]
+                  ;; fn replacements throughout: a localized text may contain
+                  ;; `$1` or `$&`, which string replacements read as groups
+                  (-> h
+                      (str/replace (re-pattern (str ">(\\s*)" quoted "(\\s*)<"))
+                                   (fn [[_ a b]] (str ">" a localized b "<")))
+                      (str/replace (re-pattern (str "=\"" quoted "\""))
+                                   (fn [_] (str "=\"" localized "\"")))
+                      (str/replace (re-pattern (str "'" quoted "'"))
+                                   (fn [_] (str "'" (str/replace localized "'" "\\'") "'")))
+                      (str/replace (re-pattern (str "\"" quoted "\""))
+                                   (fn [_] (str "\"" (str/replace localized "\"" "\\\"") "\""))))))
+              html
+              (sort-by (fn [[src _]] (- (count (str src)))) strings))
+      :else
       (reduce (fn [h [src localized]]
                 (str/replace h (str src) (str localized)))
-              html strings)
-      html)))
+              html strings))))
+
+(defn- re-quote
+  "Regex-quote a literal (dual-render: no Pattern/quote on cljs)."
+  [s]
+  ;; a fn replacement, not "\\$0": $0 is a group on the JVM and plain text in
+  ;; JS, so the string form would work on one engine and not the other
+  (str/replace (str s) #"[.*+?^${}()|\[\]\\/]" (fn [m] (str "\\" m))))
 
 (defn document-variants
   "The content-addressing side of locale support: ONE route → N locale
