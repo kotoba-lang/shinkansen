@@ -215,7 +215,7 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
     src/shinkansen/maturity.cljc Next / SvelteKit / shadcn / Radix との比較を data で（declared vs driven、test で ns 実在を pin）
     src/shinkansen/form.cljc     schema（data）→ validate（coerce + field ごとの理由）→ field-attrs（aria-invalid / describedby）
     examples/reference_app.cljc  本物の CID・本物の Biscuit authorizer を束ねた todo app（`npm run host`）
-    test/                        160 tests / 604 assertions, 0 fail 0 error（nbb via kbb）
+    test/                        162 tests / 618 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -486,7 +486,7 @@ framework の改善は co-scientist の approach で進める —— **測れな
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 160 tests / 604 assertions, 0 failures, 0 errors
+kbb -M:test        # 162 tests / 618 assertions, 0 failures, 0 errors
 ```
 
 ⚠ `test_runner` の `-main` に**列挙されていない** test ns は require されても走らない。

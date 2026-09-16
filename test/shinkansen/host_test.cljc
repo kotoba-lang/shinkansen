@@ -107,3 +107,16 @@
 (deftest json-out-speaks-the-interaction-vocabulary
   (is (= "{\"a\":[\"todo/add\",\"milk\",1,true,null],\"b\":\"x\\\"y\"}"
          (host/->json {:a [:todo/add "milk" 1 true nil] :b "x\"y"}))))
+
+(deftest identity-headers-are-exposed-for-hosts-that-serve-bytes-elsewhere
+  (is (= {"cache-control" "no-cache" "etag" "\"cid-1\"" "link" "<ipfs://cid-1>; rel=\"canonical\""}
+         (host/document-headers {:cid "cid-1"})))
+  (is (= {"cache-control" "public, max-age=60, stale-while-revalidate=60" "etag" "\"c\"" "link" "<ipfs://c>; rel=\"canonical\""}
+         (host/document-headers {:cid "c" :mode :isr :revalidate-seconds 60})))
+  (is (= {"cache-control" "no-cache"} (host/document-headers {})) "no CID, no identity claimed")
+  (is (host/not-modified? "\"cid-1\"" "cid-1"))
+  (is (host/not-modified? "\"x\", \"cid-1\"" "cid-1") "a list of tags")
+  (is (not (host/not-modified? "\"cid-2\"" "cid-1")))
+  (is (not (host/not-modified? nil "cid-1")))
+  (is (not (host/not-modified? "\"cid-1\"" nil)) "no CID can never match"))
+
