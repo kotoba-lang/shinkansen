@@ -116,6 +116,8 @@
   (is (= {"cache-control" "no-cache"} (host/document-headers {})) "no CID, no identity claimed")
   (is (host/not-modified? "\"cid-1\"" "cid-1"))
   (is (host/not-modified? "\"x\", \"cid-1\"" "cid-1") "a list of tags")
+  (is (host/not-modified? "W/\"cid-1\"" "cid-1") "a CDN weakened the tag it was given; the browser sends it back weak")
+  (is (not (host/not-modified? "W/\"cid-2\"" "cid-1")))
   (is (not (host/not-modified? "\"cid-2\"" "cid-1")))
   (is (not (host/not-modified? nil "cid-1")))
   (is (not (host/not-modified? "\"cid-1\"" nil)) "no CID can never match"))

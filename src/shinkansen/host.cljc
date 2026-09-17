@@ -161,10 +161,18 @@
 (defn not-modified?
   "Does the request's If-None-Match name this CID? Then the bytes need not
   travel — a name host can answer 304 from the receipt alone, before it
-  touches the bytes."
+  touches the bytes.
+
+  A weak tag (`W/\"cid\"`) matches too: a CDN that compresses the response
+  weakens the strong ETag it was given (measured 2026-09-17 on kotoba.cloud
+  behind Cloudflare: curl saw \"cid\", a fetch with Accept-Encoding saw
+  W/\"cid\"), and a browser sends back exactly what it received. Content
+  identity is a claim about the decoded bytes, so weak comparison is the
+  right comparison here — RFC 9110 §13.1.2 allows it for If-None-Match."
   [if-none-match cid]
   (boolean (and cid if-none-match
-                (some #(= (str/trim %) (etag-of cid)) (str/split (str if-none-match) #",")))))
+                (some #(= (str/replace (str/trim %) #"^W/" "") (etag-of cid))
+                      (str/split (str if-none-match) #",")))))
 
 (defn- html-response [status html {:keys [cid mode revalidate-seconds dev? etag-in]}]
   (let [html (if dev? (with-reload html) html)]
