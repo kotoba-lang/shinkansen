@@ -116,7 +116,7 @@
     :theirs "none."
     :ns 'shinkansen.state :status :driven-by-product :consumers 1
     :have "identity = CID for documents, data, state (chain), route tree; ETag = CID on the name host — live on kotoba.cloud / docs.kotoba.cloud (every document answers ETag = its raw CIDv1, Link rel=canonical ipfs://, 304 from the receipt alone)"
-    :gap "the identity is named but not retrievable: measured 2026-09-17, the bytes plane ({cid}.ipfs.yataverse.com, owner directive 2026-09-14) has no write path — the archive PUT at kotobase.net is redirected to kotoba.cloud by a zone rule, yataverse and data.kotoba.cloud answer 405 — and a pre-swap CID 404s; verify:live holds this red. Also: chain hash covers the db value only (:prev / :event / :principal are outside it) — SPEC §1.5"
+    :gap "retrievability is a release step, not a property: kotoba.cloud's receipts reach {cid}.ipfs.yataverse.com only when npm run publish:receipts is run after a release (R2 ipld/{cid}; needs the wrangler OAuth session, so not in CI; a release that changes every document costs ~1 h through the wrangler CLI, measured 2026-09-17) — verify:live's canonical-resolves case is the check. The B2 archive / IPNI announcement is not written by it. Also: chain hash covers the db value only (:prev / :event / :principal are outside it) — SPEC §1.5"
     :unique true}
    ;; ── component face: jp-go-dds + cloud-kotoba-dds vs shadcn / Radix ──
    {:axis :ui :name :components
