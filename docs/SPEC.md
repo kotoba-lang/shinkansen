@@ -17,16 +17,21 @@ ADR-2609092600 の app 4 面を framework の primitive としてそのまま使
 
     identity  ipfs://{cid}                       不変。app が記録する唯一のアドレス
     naming    DNSLink / IPNS                     可変な版
-    bytes     https://{cid}.ipfs.kotobase.net    Location 1
+    bytes     https://{cid}.ipfs.yataverse.com   Location 1（オーナー指示 2026-09-14。`{cid}.ipfs.kotobase.net` は退役、522）
     entry     https://{name}.itonami.app/        Location 2
 
-- **HTML の link は CID そのもの**: `href="https://{cid}.ipfs.kotobase.net/"` が
-  1 等公民。`{cid}.ipfs.yataverse.com`（mirror zone、ADR-2609131630）も同値。
+- **HTML の link は CID そのもの**: `href="https://{cid}.ipfs.yataverse.com/"` が
+  1 等公民（ADR-2609131630 の mirror zone が 2026-09-14 に bytes plane そのものになった）。
+  ⚠ **実測 2026-09-17: bytes plane への書き込み経路が無い。** archive の `PUT kotobase.net/ipfs/{cid}` は
+  zone rule で kotoba.cloud へ 308（そこに `/ipfs/` は無い）、`ipfs.yataverse.com` と `data.kotoba.cloud` は
+  PUT 405。2026-08-27 に archive へ publish 済みの CID も yataverse では 404。identity（CID）は名乗れるが
+  bytes は取れない —— `verify:live` の「canonical resolves」case がこれを赤で持つ（§3.3）。
 - **`:document` は自己完結の 1 ファイル**。CDN から asset を取りに行く document は
   CID を名乗れない — `shinkansen.publish/manifest` は外部 asset 参照を
   **理由付きで拒否**する（どの URL が違反かを `:external` で返す）。
   CID gateway への link（`{cid}.ipfs.*` / `{cid}.ipns.*` / path 形
-  `ipfs.kotobase.net/ipfs/{cid}`）は content 自身なので違反ではない。
+  `ipfs.yataverse.com/ipfs/{cid}`、legacy の `ipfs.kotobase.net/ipfs/{cid}` は 301 で同じ所へ）は
+  content 自身なので違反ではない。
 
 ### 1.2 Unison 的 content addressing
 
@@ -91,7 +96,7 @@ tool で lake を読み、UI document を取り、dispatch を投げる:
 
 決定:
 
-- **origin は containment であって proof ではない。** `{cid}.ipfs.kotobase.net` は document ごとに
+- **origin は containment であって proof ではない。** `{cid}.ipfs.yataverse.com` は document ごとに
   別 origin（storage / SW / DOM が隔離される）、`{name}.itonami.app` は人が入る名前。どちらの
   hostname も identity ではなく authority でもない。**authorizer への入力に origin / path / host は
   含めない**（`invoke_test/the-authorizer-sees-the-effect-and-nothing-about-where-the-call-came-from`
@@ -646,8 +651,10 @@ browser は受け取った形で `If-None-Match` を返す。`host/not-modified?
 live e2e が見つけた: strong 比較だけでは browser に 304 が一度も出ない）→ Link rel=canonical → no-cache →
 If-None-Match strong / weak の両方で 304 → asset は identity を名乗らない。seam は **api.kotoba.cloud** で
 1 回（grant 無し → 403 `no-grant-presented`、読めない → `grant-unreadable`。docs. は documents-only の host で
-`/v1/invoke` は 404 —— 設計どおり、e2e の前提が違っていた）。`SCANNED 18 / FAILED 0 / UNREACHABLE 0`
-（2026-09-17、release 441beec4）。届かない host は 2（pass ではない）。
+`/v1/invoke` は 404 —— 設計どおり、e2e の前提が違っていた）。さらに **canonical resolves**（bytes plane `{cid}.ipfs.yataverse.com` が同じ bytes を返す）。
+2026-09-17、release 441beec4: `SCANNED 20 / FAILED 2` —— 落ちている 2 つが canonical resolves（両 host とも
+404）。**これは e2e の赤であって劇場ではない**: 書き込み経路が無い間はここが赤のまま（§1.1）。届かない host は
+2（pass ではない）。
 
 **production allow path**（2026-09-17、owner の Chrome の passkey session、console.kotoba.cloud 同 origin）:
 `POST /v1/database/session/tenants {name}` → tenant → `POST …/token {tenantId dbName permissions [data:read]}` →
