@@ -201,13 +201,14 @@
    "function inlined(){if(!o.snapshot||typeof document==='undefined')return null;var s=document.querySelector('script[type=\"application/json\"][data-live-snapshot=\"'+o.snapshot+'\"]');if(!s||!s.textContent.trim())return null;try{return JSON.parse(s.textContent);}catch(e){return null;}}"
    ;; sources: poll (GET with ?since=cursor) or stream (SSE frames, reconnect with the cursor)
    "function url(u){if(typeof u==='function')return u(cur);if(cur==null)return u;return u+(u.indexOf('?')>=0?'&':'?')+'since='+encodeURIComponent(cur);}"
-   "function schedule(ms){if(stopped)return;if(timer)clearTimeout(timer);timer=setTimeout(tick,ms);}"
+   ;; what a scheduled wake-up does: reconnect the stream when there is one, else poll
+   "function schedule(ms){if(stopped)return;if(timer)clearTimeout(timer);timer=setTimeout(function(){if(o.stream){if(!stream()&&o.source)tick();}else tick();},ms);}"
    "function backoff(){errors++;return Math.min(interval*Math.pow(2,errors),interval*8);}"
    "function tick(){if(stopped)return;if(typeof document!=='undefined'&&document.hidden){schedule(interval);return;}"
    "fetch(url(o.source),{credentials:'same-origin',headers:{accept:'application/json'}}).then(function(r){if(r.status===401){state('signed-out');stopped=true;return;}"
    "if(!r.ok){state('error',{reason:'http-'+r.status});schedule(backoff());return;}return r.json().then(function(f){errors=0;if(apply(f))state('live');else state('error',{reason:'not-a-frame'});schedule(interval);});})"
    ".catch(function(e){state('error',{reason:String(e&&e.message||e)});schedule(backoff());});}"
-   "function stream(){if(stopped||!globalThis.shinkansen||!globalThis.shinkansen.streamRun)return false;"
+   "function stream(){if(stopped||!globalThis.shinkansen||!globalThis.shinkansen.streamRun)return false;if(typeof document!=='undefined'&&document.hidden){schedule(interval);return true;}"
    "run=globalThis.shinkansen.streamRun(url(o.stream),{onEvent:function(f){errors=0;if(apply(f))state('live');},"
    "onClose:function(){if(!stopped)schedule(interval);},"
    "onError:function(e){if(e&&e.status===401){state('signed-out');stopped=true;return;}state('error',{reason:e&&(e.status?'http-'+e.status:e.error)});schedule(backoff());}},{credentials:'same-origin'});return true;}"
