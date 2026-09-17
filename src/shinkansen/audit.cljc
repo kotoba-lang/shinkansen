@@ -98,7 +98,8 @@
   browser hides by default the idle-state axes do not count."
   (:require [clojure.string :as str]
             [shinkansen.interaction :as interaction]
-            [shinkansen.viewport :as viewport]))
+            [shinkansen.viewport :as viewport]
+            [shinkansen.live :as live]))
 
 ;; --- a minimal HTML walker -----------------------------------------------
 ;; Regex over tags is enough here because emitted documents are machine-
@@ -741,6 +742,41 @@
                                     (str/join ", " (take 12 unstyled))
                                     (when (> (count unstyled) 12) (str ", +" (- (count unstyled) 12) " more"))
                                     " — the elements render unstyled (a header that is a bare list of links, a skip link that stays in view); the document was built for a stylesheet it does not ship — emit it through the shared shell or inline the CSS it was written against")})))))}
+
+   {:id :live-stable :weight 0.08
+    :title "Every live region reserves its space and ships the runtime that patches it"
+    ;; A region marked data-live (shinkansen.live) promises two things a
+    ;; static document can keep: it does not shift the page when its data
+    ;; arrives (it reserves its filled height — min-block-size / aspect-
+    ;; ratio inline), and the frames that reach it are patched into a
+    ;; keyed set rather than replacing it (the runtime that does so is on
+    ;; the page: a shipped script that defines `shinkansen.live`). Measured
+    ;; 2026-09-17 on console.kotoba.cloud/requests/: hidden until the data
+    ;; came (5 s of nothing, then the page shifted) and rebuilt on every
+    ;; refresh (「更新のたびに崩れる」). A document without live regions is
+    ;; :not-applicable; regions with a referenced script nobody supplied are
+    ;; :unmeasured.
+    :check (fn [{:keys [els script-text scripts-missing]} _]
+             (let [regions (filter #(get-in % [:attrs "data-live"]) els)]
+               (cond
+                 (empty? regions) {:not-applicable "the document declares no data-live region"}
+                 (seq scripts-missing)
+                 {:unmeasured (str "external script(s) not supplied: " (str/join ", " scripts-missing)
+                                   " — the live runtime lives there; pass ctx :scripts")}
+                 :else
+                 (let [runtime? (str/includes? (str script-text) "live:live")
+                       problems (for [el regions
+                                      :let [why (cond-> []
+                                                  (not (live/reserved? el)) (conj "no reserved space (inline min-block-size / aspect-ratio) — the page shifts when its data arrives")
+                                                  (not runtime?) (conj "no shipped script defines shinkansen.live — the region can only be replaced, not patched"))]
+                                      :when (seq why)]
+                                  (str "data-live=" (get-in el [:attrs "data-live"]) ": " (str/join ", " why)))
+                       n (count regions) bad (count problems)]
+                   (if (zero? bad)
+                     {:score 1.0}
+                     {:score (double (/ (- n bad) n))
+                      :finding (str bad " of " n " live region(s) cannot stay stable: " (str/join "; " problems)
+                                    " (shinkansen.live: reserve the space, ship the runtime, patch by key)")})))))}
 
    {:id :behaviors-delivered :weight 0.10
     :title "Every data-behavior marker has its runtime shipped and its markup complete"

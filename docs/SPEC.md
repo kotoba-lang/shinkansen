@@ -201,7 +201,7 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
     src/shinkansen/mcp.cljc      MCP tool 宣言 + dispatch（純粋、handler 注入）
     src/shinkansen/locale.cljc   locale negotiation 契約（cookie ベース、path 非依存、純粋）
     src/shinkansen/viewport.cljc multi-screen-size 契約（viewport meta + xs band、静的 audit）
-    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（19 軸、理由付き finding）
+    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（22 軸、理由付き finding）
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
     src/shinkansen/interaction.cljc browser 側の契約（data-action / data-params、run stream、hydrate、theme、locale）+ 1 本の runtime
     src/shinkansen/theme.cljc    light / dark / system の契約（storage、属性、head-script、theme/set）
@@ -214,8 +214,9 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
     src/shinkansen/serve.cljc    node:http transport + dev loop（watch / rebuild / reload stream / error-as-500）
     src/shinkansen/maturity.cljc Next / SvelteKit / shadcn / Radix との比較を data で（declared vs driven、test で ns 実在を pin）
     src/shinkansen/form.cljc     schema（data）→ validate（coerce + field ごとの理由）→ field-attrs（aria-invalid / describedby）
+    src/shinkansen/live.cljc     live regions（§2.7）: frame algebra（snapshot / delta / heartbeat / error、`reconcile` 純粋）+ keyed DOM patcher の runtime + `:live-stable` の helper
     examples/reference_app.cljc  本物の CID・本物の Biscuit authorizer を束ねた todo app（`npm run host`）
-    test/                        163 tests / 618 assertions, 0 fail 0 error（nbb via kbb）
+    test/                        168 tests / 667 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -399,6 +400,61 @@ coerce し、**落ちた field と rule を全部**名指す（`{:errors {:email
 `:behaviors-delivered`（§2.4）の契約表は jp-go-dds.behavior 0.2.0 の **12 kind** を知る（2026-09-16 に
 popover / tooltip / select / slider / table が加わった。宣言があるのに契約表に無ければ「no such behaviour」に
 なるので、behavior 層と audit は同じ日に動く）。
+
+### 2.7 live regions —— 開いている間に変わるデータの契約（`shinkansen.live`、2026-09-17）
+
+**実測（console.kotoba.cloud/requests/、2026-09-17、Chrome の performance API）**: document の
+DOMContentLoaded 390 ms に対し `GET /v1/requests` は初回 4,978 ms、2 回目 **17,863 ms**、応答 195 KB
+（500 行）。authority の Durable Object は 2,977 本の job 記録（各 prompt + 応答で数 MB）を毎回
+decode して 300 byte の行を作っていた。その walk の間、同じ object を通る `/v1/billing/status`
+（3,552 ms）/ `/v1/research/status`（4,900 ms）も待たされる —— **一覧が console 全体を遅くしていた**。
+browser 側は 15 秒ごとに全件を取り直し、`replaceChildren` で table を作り直し、`<select>` の option も
+組み直す（scroll・選択・開いた list が消える —— 「更新のたびに崩れる」）。document は data が来るまで
+tile も table も `hidden` で、来た瞬間に page が伸びる（「すぐにコンテンツが表示されない」）。
+
+これは 3 つの契約の欠落であり、`shinkansen.live` はその 3 つを持つ。**js / event は host の権限
+（§1.3）のまま**: framework が持つのは frame の algebra と runtime 1 本、host が持つのは行の描き方
+（`create` / `patch`）と行の意味。
+
+1. **wire は frame、frame は差分。** 1 つの reader（§2.3b `streamRun`、または fetch）で 4 種を受ける:
+
+       {:kind :snapshot  :cursor c :rows [...]}                  集合全体（最初の 1 回）
+       {:kind :delta     :cursor c :upsert [...] :remove [ids]}  cursor 以降に変わったもの
+       {:kind :heartbeat :cursor c}                              変化なし
+       {:kind :error     :reason "…"}                            名指しの拒否
+
+   cursor は server の単調時計（ms）。client は `?since=<cursor>` で再開し、transport が poll でも SSE でも
+   frame は同じ。**毎 tick 全件を送り直すのは anti-pattern `:full-refetch`**（`live/anti-patterns`）。
+   frame の algebra は `live/reconcile`（pure）—— browser runtime と同じ規則を Clojure で持つので、server は
+   inline する最初の frame を作れ、test は frame 列の帰結を DOM 無しで pin できる。
+
+2. **server は projection から答える。記録を歩かない。** 行は byte、記録は MB。store は記録の隣に行の
+   index entry（記録が変わるたびに更新）を持ち、一覧は index を **1 回の bounded な操作**で読む。
+   予算は契約の一部: endpoint は O(rows) で答え、O(records × record size) は
+   `:walk-the-records` として設計 review で落とす。
+
+3. **DOM は keyed patch。region を作り直さない。** `shinkansen.live(mount, opts)` は `opts.key` で行を
+   keyed に持ち、key ごとに node を **1 度だけ** `create`、行が変わったときだけ `patch`（text node
+   のみ）、順序どおりに `insertBefore`、消えた key を remove —— それ以外に触らない。node が生き残るので
+   focus・選択・scroll が生き残る。`<select>` は option 集合が変わったときだけ組み直す（`live.options`、
+   選択値は保つ）。region は data が来る**前に**高さを確保する（`live-attrs` → inline `min-block-size`
+   / `aspect-ratio`）ので、最初の frame は page を伸ばさず空間を埋める。最初の frame は edge が
+   document に inline できる（`snapshot-script`、`[data-live-snapshot]` の JSON）—— 最初の paint に行が在る
+   （§2.3 の `:edge` load の live 版）。runtime は inline があればそこから始め、無ければ fetch する。
+   `document.hidden` の間は tick しない。401 は `signed-out` で止まる。失敗は backoff（最大 8×interval）。
+
+**audit 軸 `:live-stable`（§2.4）**: `[data-live]` を宣言した document は、(a) 各 region が空間を確保して
+いる、(b) `shinkansen.live` を定義した script が配られている、の 2 つを静的に約束する。宣言が無ければ
+`:not-applicable`、参照 script が供給されなければ `:unmeasured`（pass と同じ値は返さない）。runtime の
+振る舞い（同じ node が frame をまたいで生きること、順序、削除、option の再構築が集合の変化時だけである
+こと）は `scripts/runtime-node-check.cljk` が DOM double で実行して数える（`SCANNED	12`）。
+
+**consumer の形（kotoba.cloud の Requests / Dashboard）**: authority は job 記録の隣に
+`idx:<createdAt>:<jobId>` の行 projection を持ち、`/jobs/list` は index を `limit`+`reverse` で 1 回読む
+（`since` があれば `updatedAt > since` の行だけ）。edge の `GET /v1/requests?since=` は delta frame、
+`GET /v1/requests/stream` は同じ frame を SSE で流す。document は `live-attrs` で tile / table / chart の
+高さを確保し、edge は signed-in の request に最初の snapshot を inline する。browser は
+`shinkansen.live` に行の `create` / `patch` を渡すだけになる。
 
 ### 2.4 UI/UX document 契約は fitness function である（`shinkansen.audit` + `shinkansen.coscientist`）
 

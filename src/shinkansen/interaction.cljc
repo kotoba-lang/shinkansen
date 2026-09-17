@@ -49,6 +49,15 @@
      `[data-hydrate=\"<name>\"]` not yet hydrated and marks it; the mount
      is server-rendered, the browser only fills.
 
+  5. Live regions (shinkansen.live, 2026-09-17). `live(mount, opts)` keeps
+     a keyed set of rows fed by frames (snapshot / delta / heartbeat) from
+     a poll or an SSE stream and PATCHES the region — a node per key,
+     created once, patched in place, moved or removed — instead of
+     replacing it; a `<select>` is rebuilt only when its option set
+     changed (`live.options`). The frame algebra is `shinkansen.live/
+     reconcile`; the static promises (reserved space, runtime shipped)
+     are the audit axis `:live-stable`.
+
   4. Framework actions. Two choices every product makes are the
      framework's: the theme (`theme/set {mode}`, shinkansen.theme) and the
      language (`locale/set {locale}`, shinkansen.locale). The runtime
@@ -60,7 +69,8 @@
   string. No js/ in this namespace."
   (:require [clojure.string :as str]
             [shinkansen.theme :as theme]
-            [shinkansen.locale :as locale]))
+            [shinkansen.locale :as locale]
+            [shinkansen.live :as live]))
 
 (def framework-actions
   "The events the runtime answers on its own: theme/set and locale/set.
@@ -145,7 +155,7 @@
 
 (def runtime
   "The one browser runtime for the contract. Exposes
-   `globalThis.shinkansen = {on, off, dispatch, streamRun, hydrate, params, theme, locale}`.
+   `globalThis.shinkansen = {on, off, dispatch, streamRun, hydrate, params, theme, locale, live}`.
    The host ships it as its own file or inlines it once; nothing in it is
    product-specific."
   (str
@@ -178,8 +188,10 @@
    "for(var i=0;i<nodes.length;i++){nodes[i].setAttribute('data-hydrated','');fn(nodes[i]);}return nodes.length;}"
    theme/runtime-fragment
    locale/runtime-fragment
+   ;; live regions (shinkansen.live, 2026-09-17): the keyed patcher + its source loop
+   live/runtime-fragment
    ;; the framework's own actions, answered here; a host's on() replaces them
    "on('theme/set',function(p){theme.set(p.mode);});"
    "on('locale/set',function(p,el){locale.set(p.locale,{href:el&&el.getAttribute('href')});});"
-   "globalThis.shinkansen={on:on,off:off,dispatch:dispatch,streamRun:streamRun,hydrate:hydrate,params:params,theme:theme,locale:locale};"
+   "globalThis.shinkansen={on:on,off:off,dispatch:dispatch,streamRun:streamRun,hydrate:hydrate,params:params,theme:theme,locale:locale,live:live};"
    "})();"))

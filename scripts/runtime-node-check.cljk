@@ -25,13 +25,41 @@
    "globalThis.fetch=function(url,opts){fetched.push(url);if(url==='/sse')return Promise.resolve({ok:true,body:body('data: {\"event\":\"a\"}\\n: keepalive\\ndata: [DONE]\\ndata: {\"event\":\"b\"}\\n')});"
    "if(url==='/ndjson')return Promise.resolve({ok:true,body:body('{\"type\":\"delta\",\"content\":\"x\"}\\n\\n{\"type\":\"done\"}\\n')});"
    "return Promise.resolve({ok:false,status:403,json:function(){return Promise.resolve({error:{type:'invalid-csrf'}});}});};"
+   ;; a DOM double for the live patcher: insertBefore / removeChild / firstChild / nextSibling / parentNode,
+   ;; and a <select> with options (Array.from over .options, hasAttribute, remove)
+   "function Node(tag){this.tagName=tag;this.children=[];this.parentNode=null;this.attrs={};this.textContent='';}"
+   "Object.defineProperty(Node.prototype,'firstChild',{get:function(){return this.children[0]||null;}});"
+   "Object.defineProperty(Node.prototype,'nextSibling',{get:function(){if(!this.parentNode)return null;var c=this.parentNode.children;return c[c.indexOf(this)+1]||null;}});"
+   "Node.prototype.insertBefore=function(el,ref){if(el.parentNode)el.parentNode.removeChild(el);var i=ref?this.children.indexOf(ref):this.children.length;if(i<0)i=this.children.length;this.children.splice(i,0,el);el.parentNode=this;return el;};"
+   "Node.prototype.appendChild=function(el){return this.insertBefore(el,null);};"
+   "Node.prototype.removeChild=function(el){var i=this.children.indexOf(el);if(i>=0)this.children.splice(i,1);el.parentNode=null;return el;};"
+   "Node.prototype.remove=function(){if(this.parentNode)this.parentNode.removeChild(this);};"
+   "Node.prototype.hasAttribute=function(k){return k in this.attrs;};Node.prototype.setAttribute=function(k,v){this.attrs[k]=v;};Node.prototype.getAttribute=function(k){return this.attrs[k]||null;};"
+   "Object.defineProperty(Node.prototype,'options',{get:function(){return this.children;}});"
+   "Object.defineProperty(Node.prototype,'value',{get:function(){return this._value||(this.children[0]&&this.children[0]._value)||'';},set:function(v){this._value=v;}});"
+   "globalThis.document.createElement=function(tag){return new Node(tag);};globalThis.document.querySelector=function(){return null;};globalThis.document.hidden=false;"
+   "globalThis.setTimeout=function(){return 0;};globalThis.clearTimeout=function(){};"
    i/runtime
    "var S=globalThis.shinkansen;"
+   ;; --- live: node identity survives frames; order, removal, options
+   "var mount=new Node('tbody');var creates=0,patches=0;"
+   "var L=S.live(mount,{key:function(r){return r.id;},create:function(r){creates++;var n=new Node('tr');n.textContent=r.id+':'+r.n;return n;},patch:function(el,r){patches++;el.textContent=r.id+':'+r.n;},"
+   "view:function(rows){return rows.slice().sort(function(a,b){return b.at-a.at;});}});"
+   "L.apply({kind:'snapshot',cursor:1,rows:[{id:'a',n:1,at:1},{id:'b',n:1,at:2}]});"
+   "var nodeA=mount.children[1],nodeB=mount.children[0];var liveOrder1=mount.children.map(function(c){return c.textContent;}).join(',');var creates1=creates;"
+   "L.apply({kind:'delta',cursor:2,upsert:[{id:'a',n:2,at:1},{id:'c',n:1,at:3}],remove:['b']});"
+   "var liveOrder2=mount.children.map(function(c){return c.textContent;}).join(',');var sameA=mount.children[1]===nodeA;var bGone=nodeB.parentNode===null;"
+   "var patchesBefore=patches;L.apply({kind:'snapshot',cursor:3,rows:[{id:'a',n:2,at:1},{id:'c',n:1,at:3}]});var noopPatches=patches-patchesBefore;"
+   "L.apply({kind:'heartbeat',cursor:4});var liveCursor=L.cursor();var liveRefused=L.apply({kind:'bogus'});"
+   "var sel=new Node('select');var all=new Node('option');all._value='all';all.attrs['data-fixed']='';sel.appendChild(all);sel.value='all';"
+   "var opt1=L.options(sel,['m1','m2']);var chosen=sel.value;sel.value='m2';var opt2=L.options(sel,['m1','m2']);var kept=sel.value;var opt3=L.options(sel,['m2','m3']);var after=sel.value;"
+   "var liveOut={creates:creates,creates1:creates1,patches:patches,order1:liveOrder1,order2:liveOrder2,sameA:sameA,bGone:bGone,noopPatches:noopPatches,cursor:liveCursor,refused:liveRefused,opt:[opt1,opt2,opt3],chosen:chosen,kept:kept,after:after,rows:L.rows().length};"
    "S.streamRun('/sse',{onEvent:function(f){frames.push('sse:'+f.event);},onClose:function(){closes++;}});"
    "S.streamRun('/ndjson',{onEvent:function(f){frames.push('nd:'+f.type);},onClose:function(){closes++;}});"
    "S.streamRun(function(opts){fetched.push('fn'+(opts.signal?'+signal':''));return fetch('/denied',opts);},{onError:function(e){errors.push(e.status+':'+(e.response&&typeof e.response.json));},onClose:function(){closes++;}});"
    "var fmt=S.locale.format('{phase} {seconds}s {n} {missing} {gone}',{phase:'model',seconds:1234.5,n:7,gone:null});"
-   "setTimeout(function(){process.stdout.write(JSON.stringify({frames:frames,closes:closes,errors:errors,fetched:fetched,fmt:fmt,lang:S.locale.lang()}));},50);"))
+   "globalThis.__later=function(){process.stdout.write(JSON.stringify({frames:frames,closes:closes,errors:errors,fetched:fetched,fmt:fmt,lang:S.locale.lang(),live:liveOut}));};"
+   "Promise.resolve().then(function(){return new Promise(function(res){var t=require('timers');t.setTimeout(res,50);});}).then(globalThis.__later);"))
 
 (def cp (js/require "child_process"))
 (def res (.spawnSync cp "node" #js ["-e" harness] #js {:encoding "utf8"}))
@@ -46,7 +74,15 @@
    ["host fetch fn received opts with signal" (some #{"fn+signal"} (:fetched out))]
    ["non-2xx reaches onError with the unread response" (= ["403:function"] (:errors out))]
    ["format: Intl number for lang=en, hole visible, nil blank" (= "model 1,234.5s 7 {missing} " (:fmt out))]
-   ["lang() reads <html lang>" (= "en" (:lang out))]])
+   ["lang() reads <html lang>" (= "en" (:lang out))]
+   ;; live regions (shinkansen.live)
+   ["live: a snapshot creates one node per row, in the view's order" (and (= 2 (get-in out [:live :creates1])) (= "b:1,a:1" (get-in out [:live :order1])))]
+   ["live: a delta patches the changed row IN PLACE (same node), inserts the new one where the order says, removes by id"
+    (and (true? (get-in out [:live :sameA])) (true? (get-in out [:live :bGone])) (= "c:1,a:2" (get-in out [:live :order2])) (= 3 (get-in out [:live :creates])) (= 1 (get-in out [:live :patches])))]
+   ["live: a byte-identical snapshot patches nothing" (= 0 (get-in out [:live :noopPatches]))]
+   ["live: a heartbeat advances the cursor; a bogus frame is refused" (and (= 4 (get-in out [:live :cursor])) (false? (get-in out [:live :refused])) (= 2 (get-in out [:live :rows])))]
+   ["live: options rebuilt only when the set changed, the chosen value kept, the fixed option first"
+    (and (= [true false true] (get-in out [:live :opt])) (= "all" (get-in out [:live :chosen])) (= "m2" (get-in out [:live :kept])) (= "m2" (get-in out [:live :after])))]])
 (doseq [[label ok] checks] (println (if ok "ok  " "FAIL") label))
 (println (str "SCANNED\t" (count checks)))
 (when (some (complement second) checks)
