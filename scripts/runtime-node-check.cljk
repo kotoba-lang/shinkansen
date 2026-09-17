@@ -14,8 +14,8 @@
 
 (def harness
   (str
-   "var frames=[];var closes=0;var errors=[];var fetched=[];"
-   "globalThis.document={cookie:'',documentElement:{getAttribute:function(k){return k==='lang'?'en':null;},setAttribute:function(){},removeAttribute:function(){}},addEventListener:function(){},querySelectorAll:function(){return [];}};"
+   "var frames=[];var closes=0;var errors=[];var fetched=[];var listeners={};"
+   "globalThis.document={cookie:'',documentElement:{getAttribute:function(k){return k==='lang'?'en':null;},setAttribute:function(){},removeAttribute:function(){}},addEventListener:function(t,f){(listeners[t]=listeners[t]||[]).push(f);},removeEventListener:function(){},querySelectorAll:function(){return [];}};"
    "globalThis.location={protocol:'http:',assign:function(){},reload:function(){}};"
    "globalThis.window=globalThis;globalThis.matchMedia=function(){return {matches:false,addEventListener:function(){}};};"
    "globalThis.CustomEvent=function(t,o){this.type=t;this.detail=o&&o.detail;};globalThis.document.dispatchEvent=function(){};"
@@ -24,6 +24,7 @@
    "return {getReader:function(){return {read:function(){if(i<chunks.length)return Promise.resolve({done:false,value:chunks[i++]});return Promise.resolve({done:true});}};}};}"
    "globalThis.fetch=function(url,opts){fetched.push(url);if(url==='/sse')return Promise.resolve({ok:true,body:body('data: {\"event\":\"a\"}\\n: keepalive\\ndata: [DONE]\\ndata: {\"event\":\"b\"}\\n')});"
    "if(url==='/ndjson')return Promise.resolve({ok:true,body:body('{\"type\":\"delta\",\"content\":\"x\"}\\n\\n{\"type\":\"done\"}\\n')});"
+   "if(url.indexOf('/live-stream')===0)return Promise.resolve({ok:true,body:body('data: {\"kind\":\"heartbeat\",\"cursor\":9}\\n')});"
    "return Promise.resolve({ok:false,status:403,json:function(){return Promise.resolve({error:{type:'invalid-csrf'}});}});};"
    ;; a DOM double for the live patcher: insertBefore / removeChild / firstChild / nextSibling / parentNode,
    ;; and a <select> with options (Array.from over .options, hasAttribute, remove)
@@ -54,11 +55,16 @@
    "var sel=new Node('select');var all=new Node('option');all._value='all';all.attrs['data-fixed']='';sel.appendChild(all);sel.value='all';"
    "var opt1=L.options(sel,['m1','m2']);var chosen=sel.value;sel.value='m2';var opt2=L.options(sel,['m1','m2']);var kept=sel.value;var opt3=L.options(sel,['m2','m3']);var after=sel.value;"
    "var liveOut={creates:creates,creates1:creates1,patches:patches,order1:liveOrder1,order2:liveOrder2,sameA:sameA,bGone:bGone,noopPatches:noopPatches,cursor:liveCursor,refused:liveRefused,opt:[opt1,opt2,opt3],chosen:chosen,kept:kept,after:after,rows:L.rows().length};"
+   ;; --- live: a hidden document fetches nothing (paused); shown again, it connects at once with its cursor
+   "document.hidden=true;var states=[];var L2=S.live(new Node('tbody'),{key:function(r){return r.id;},create:function(){return new Node('tr');},patch:function(){},stream:'/live-stream',onState:function(s){states.push(s.state+(s.reason?'/'+s.reason:''));}});"
+   "L2.apply({kind:'snapshot',cursor:5,rows:[]});var fetchedHidden=fetched.filter(function(u){return String(u).indexOf('/live-stream')===0;}).length;"
+   "document.hidden=false;(listeners.visibilitychange||[]).forEach(function(f){f();});"
+   "var fetchedShown=fetched.filter(function(u){return String(u).indexOf('/live-stream')===0;});"
    "S.streamRun('/sse',{onEvent:function(f){frames.push('sse:'+f.event);},onClose:function(){closes++;}});"
    "S.streamRun('/ndjson',{onEvent:function(f){frames.push('nd:'+f.type);},onClose:function(){closes++;}});"
    "S.streamRun(function(opts){fetched.push('fn'+(opts.signal?'+signal':''));return fetch('/denied',opts);},{onError:function(e){errors.push(e.status+':'+(e.response&&typeof e.response.json));},onClose:function(){closes++;}});"
    "var fmt=S.locale.format('{phase} {seconds}s {n} {missing} {gone}',{phase:'model',seconds:1234.5,n:7,gone:null});"
-   "globalThis.__later=function(){process.stdout.write(JSON.stringify({frames:frames,closes:closes,errors:errors,fetched:fetched,fmt:fmt,lang:S.locale.lang(),live:liveOut}));};"
+   "globalThis.__later=function(){liveOut.hidden={fetchedHidden:fetchedHidden,fetchedShown:fetchedShown,states:states,cursor:L2.cursor()};process.stdout.write(JSON.stringify({frames:frames,closes:closes,errors:errors,fetched:fetched,fmt:fmt,lang:S.locale.lang(),live:liveOut}));};"
    "Promise.resolve().then(function(){return new Promise(function(res){var t=require('timers');t.setTimeout(res,50);});}).then(globalThis.__later);"))
 
 (def cp (js/require "child_process"))
@@ -82,7 +88,11 @@
    ["live: a byte-identical snapshot patches nothing" (= 0 (get-in out [:live :noopPatches]))]
    ["live: a heartbeat advances the cursor; a bogus frame is refused" (and (= 4 (get-in out [:live :cursor])) (false? (get-in out [:live :refused])) (= 2 (get-in out [:live :rows])))]
    ["live: options rebuilt only when the set changed, the chosen value kept, the fixed option first"
-    (and (= [true false true] (get-in out [:live :opt])) (= "all" (get-in out [:live :chosen])) (= "m2" (get-in out [:live :kept])) (= "m2" (get-in out [:live :after])))]])
+    (and (= [true false true] (get-in out [:live :opt])) (= "all" (get-in out [:live :chosen])) (= "m2" (get-in out [:live :kept])) (= "m2" (get-in out [:live :after])))]
+   ["live: a hidden document fetches nothing and says so (paused/hidden)"
+    (and (= 0 (get-in out [:live :hidden :fetchedHidden])) (= "paused/hidden" (first (get-in out [:live :hidden :states]))))]
+   ["live: shown again, it connects at once with its cursor and goes live"
+    (and (= ["/live-stream?since=5"] (get-in out [:live :hidden :fetchedShown])) (= ["paused/hidden" "live"] (get-in out [:live :hidden :states])) (= 9 (get-in out [:live :hidden :cursor])))]])
 (doseq [[label ok] checks] (println (if ok "ok  " "FAIL") label))
 (println (str "SCANNED\t" (count checks)))
 (when (some (complement second) checks)
