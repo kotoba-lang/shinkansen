@@ -163,7 +163,9 @@
    opts.stream → url or (cursor) => url  SSE via streamRun (frames), reconnects with the cursor
    opts.interval ms                      poll / reconnect cadence (default 15000)
    opts.onFrame(frame, live)             after each applied frame (tiles, counts)
-   opts.onState({state, at, reason})     live | stale | error | signed-out
+   opts.onState({state, at, reason})     live | paused | stale | error | signed-out
+                                         (paused: the document is hidden — nothing is fetched
+                                         until it is shown again, then it connects at once)
    opts.snapshot                         name of an inlined [data-live-snapshot] to start from
 
    returns {apply(frame), rows(), row(id), cursor(), render(), stop(), refresh(), options(select, values, label)}"
@@ -202,19 +204,24 @@
    ;; sources: poll (GET with ?since=cursor) or stream (SSE frames, reconnect with the cursor)
    "function url(u){if(typeof u==='function')return u(cur);if(cur==null)return u;return u+(u.indexOf('?')>=0?'&':'?')+'since='+encodeURIComponent(cur);}"
    ;; what a scheduled wake-up does: reconnect the stream when there is one, else poll
-   "function schedule(ms){if(stopped)return;if(timer)clearTimeout(timer);timer=setTimeout(function(){if(o.stream){if(!stream()&&o.source)tick();}else tick();},ms);}"
+   "function schedule(ms){if(stopped)return;if(timer)clearTimeout(timer);timer=setTimeout(function(){timer=null;connect();},ms);}"
    "function backoff(){errors++;return Math.min(interval*Math.pow(2,errors),interval*8);}"
-   "function tick(){if(stopped)return;if(typeof document!=='undefined'&&document.hidden){schedule(interval);return;}"
+   "function tick(){if(stopped)return;if(hidden()){state('paused',{reason:'hidden'});schedule(interval);return;}"
    "fetch(url(o.source),{credentials:'same-origin',headers:{accept:'application/json'}}).then(function(r){if(r.status===401){state('signed-out');stopped=true;return;}"
    "if(!r.ok){state('error',{reason:'http-'+r.status});schedule(backoff());return;}return r.json().then(function(f){errors=0;if(apply(f))state('live');else state('error',{reason:'not-a-frame'});schedule(interval);});})"
    ".catch(function(e){state('error',{reason:String(e&&e.message||e)});schedule(backoff());});}"
-   "function stream(){if(stopped||!globalThis.shinkansen||!globalThis.shinkansen.streamRun)return false;if(typeof document!=='undefined'&&document.hidden){schedule(interval);return true;}"
+   "function stream(){if(stopped||!globalThis.shinkansen||!globalThis.shinkansen.streamRun)return false;if(hidden()){state('paused',{reason:'hidden'});schedule(interval);return true;}"
    "run=globalThis.shinkansen.streamRun(url(o.stream),{onEvent:function(f){errors=0;if(apply(f))state('live');},"
-   "onClose:function(){if(!stopped)schedule(interval);},"
+   "onClose:function(){run=null;if(!stopped&&!timer)schedule(interval);},"
    "onError:function(e){if(e&&e.status===401){state('signed-out');stopped=true;return;}state('error',{reason:e&&(e.status?'http-'+e.status:e.error)});schedule(backoff());}},{credentials:'same-origin'});return true;}"
-   "function start(){var first=inlined();if(first)apply(first);if(o.stream){if(!stream()&&o.source)tick();}else if(o.source){if(first)schedule(interval);else tick();}}"
+   ;; hidden: nothing is fetched for a document nobody sees; shown again: connect now, not at the next wake-up
+   "function hidden(){return typeof document!=='undefined'&&!!document.hidden;}"
+   "function connect(){if(o.stream){if(!stream()&&o.source)tick();}else if(o.source)tick();}"
+   "function wake(){if(stopped||hidden()||run)return;if(timer){clearTimeout(timer);timer=null;}connect();}"
+   "function start(){var first=inlined();if(first)apply(first);if(typeof document!=='undefined'&&document.addEventListener&&(o.stream||o.source))document.addEventListener('visibilitychange',wake);"
+   "if(o.stream)connect();else if(o.source){if(first)schedule(interval);else tick();}}"
    "var api={apply:apply,rows:function(){return Array.from(rows.values());},row:function(id){return rows.get(id);},cursor:function(){return cur;},render:render,options:options,"
-   "stop:function(){stopped=true;if(timer)clearTimeout(timer);if(run)run.abort('stop');},"
+   "stop:function(){stopped=true;if(timer)clearTimeout(timer);if(run)run.abort('stop');if(typeof document!=='undefined'&&document.removeEventListener)document.removeEventListener('visibilitychange',wake);},"
    "refresh:function(){if(o.stream&&run){run.abort('refresh');stream();}else tick();}};"
    "start();return api;}"))
 

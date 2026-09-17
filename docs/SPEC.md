@@ -446,13 +446,17 @@ tile も table も `hidden` で、来た瞬間に page が伸びる（「すぐ�
    / `aspect-ratio`）ので、最初の frame は page を伸ばさず空間を埋める。最初の frame は edge が
    document に inline できる（`snapshot-script`、`[data-live-snapshot]` の JSON）—— 最初の paint に行が在る
    （§2.3 の `:edge` load の live 版）。runtime は inline があればそこから始め、無ければ fetch する。
-   `document.hidden` の間は tick しない。401 は `signed-out` で止まる。失敗は backoff（最大 8×interval）。
+   `document.hidden` の間は何も fetch せず **`paused`（reason `hidden`）を告げる** —— 見えない document の
+   indicator が「読み込んでいます…」のまま止まっていた（2026-09-17 実測: automation の background tab）。
+   `visibilitychange` で見えた瞬間に cursor 付きで接続する（次の wake-up を待たない）。401 は `signed-out`
+   で止まる。失敗は backoff（最大 8×interval。stream の close は pending の backoff を上書きしない）。
 
 **audit 軸 `:live-stable`（§2.4）**: `[data-live]` を宣言した document は、(a) 各 region が空間を確保して
 いる、(b) `shinkansen.live` を定義した script が配られている、の 2 つを静的に約束する。宣言が無ければ
 `:not-applicable`、参照 script が供給されなければ `:unmeasured`（pass と同じ値は返さない）。runtime の
 振る舞い（同じ node が frame をまたいで生きること、順序、削除、option の再構築が集合の変化時だけである
-こと）は `scripts/runtime-node-check.cljk` が DOM double で実行して数える（`SCANNED	12`）。
+こと、hidden の間は fetch せず shown で即接続すること）は `scripts/runtime-node-check.cljk` が DOM double で
+実行して数える（`SCANNED	14`）。
 
 **consumer の形（kotoba.cloud の Requests / Dashboard）**: authority は job 記録の隣に
 `idx:<createdAt>:<jobId>` の行 projection を持ち、`/jobs/list` は index を `limit`+`reverse` で 1 回読む
