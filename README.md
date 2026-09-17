@@ -62,6 +62,7 @@ and cannot claim a CID.
 ## Repo layout
 
     docs/SPEC.md                   仕様（設計原理・モジュール契約・検証・次の一段）
+    docs/HOST-BINDING.md           kotoba.cloud Worker/host cheat sheet (locale / theme / audit / invoke / receipts)
     src/shinkansen/publish.cljc    view/document → CID (both planes), fail-closed
     src/shinkansen/state.cljc      db value → CID chain (Unison-style content addressing)
     src/shinkansen/invoke.cljc     invocation envelope (query / action / event) + the authority seam
@@ -114,6 +115,18 @@ attached yet (R0)" — declared but unimplemented must be visible.
 
 ## Status
 
-R0 scaffold (2026-09-13). First consumer: the yataverse.com lake index
-(ADR-2609131630) replaces its hand-written top page with a shinkansen-published
-document and exposes the machine API through shinkansen's MCP tools.
+The map is [`src/shinkansen/maturity.cljc`](src/shinkansen/maturity.cljc)
+(declared vs driven-by-host vs driven-by-product). Measured-at **2026-09-16**.
+Counts by status: **driven-by-product 12**, **driven-by-host 4**, **declared 3**,
+**not-by-design 2**, **absent 1**.
+
+Still declared (contract + tests, nobody requires them): locale
+(`shinkansen.locale`), mcp (`shinkansen.mcp`), form (`shinkansen.form`).
+MCP's stdio process still answers **"no app attached yet (R0)"**.
+
+kotoba.cloud product binding already landed for routes / adapter / invoke /
+state identity (PR #16, SPEC §6) — a Worker host on that product answers
+ETag = CID and `POST /v1/invoke`. Layouts and render stay the app's.
+
+Host maintainers: [`docs/HOST-BINDING.md`](docs/HOST-BINDING.md) is the cheat
+sheet for using those contracts instead of re-deriving them.
