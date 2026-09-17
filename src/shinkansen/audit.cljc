@@ -55,6 +55,18 @@
                        a block that names none is one colour with nothing
                        to tokenize or announce; measured 2026-09-15 on
                        kotoba.cloud/docs: the code area was unreadable
+    :shell             the document wears the app shell the host declares
+                       (ctx :shell :app): one nav[data-chrome=rail] AFTER
+                       <main> in document order and a data-chrome=top bar —
+                       the structure cloud-kotoba-dds.shell/document emits.
+                       Every other axis here measures the chrome a document
+                       DECLARES; none measured that it declared any, so a
+                       page that dropped the shell (the marketing header
+                       alone, no rail) scored 97–100 on kotoba.cloud
+                       (measured 2026-09-17: the apex, support, the blog,
+                       legal, 11 catalog pages). No :shell in ctx is
+                       :not-applicable — a host that has no shell contract
+                       is not judged against one
     :chrome-layers     chrome the document DECLARES keeps its layer: an
                        element marked data-chrome=top (a console top bar)
                        has a position:sticky|fixed rule with a block
@@ -640,6 +652,37 @@
                  (empty? missing) {:score 1.0}
                  :else {:score (double (/ (- (count pres) (count missing)) (count pres)))
                         :finding (str (count missing) " of " (count pres) " <pre> block(s) name no language (no data-lang on the pre, no <code class=\"language-…\"> inside) — one colour for everything, nothing to tokenize or announce; emit the block with cloud-kotoba-dds.code/block")})))}
+
+   {:id :shell :weight 0.10
+    :title "The document wears the declared app shell: a rail after <main>, a top bar"
+    ;; ctx :shell names the contract the host holds every document to:
+    ;;   :app  — one nav[data-chrome=rail] after <main>, one data-chrome=top
+    ;;   :none — declared shell-less (a print document, a local vault page):
+    ;;           :not-applicable WITH the declaration named
+    ;;   absent — the host declares no shell: :not-applicable. Not a 1.0 (a
+    ;;           free point on every shell-less host) and not :unmeasured
+    ;;           (the judge could tell: nothing was asked)
+    :check (fn [{:keys [els]} {:keys [shell]}]
+             (case shell
+               nil {:not-applicable "no :shell contract in ctx — the host declares which shell its documents wear (:app) or that they wear none (:none)"}
+               :none {:not-applicable "ctx :shell :none — the host declares this document wears no shell"}
+               :app
+               (let [main (some #(when (= "main" (:tag %)) %) els)
+                     rails (filter #(and (= "nav" (:tag %)) (= "rail" (get-in % [:attrs "data-chrome"]))) els)
+                     tops (filter #(= "top" (get-in % [:attrs "data-chrome"])) els)
+                     missing (cond-> []
+                               (nil? main) (conj "no <main> landmark")
+                               (empty? rails) (conj "no nav[data-chrome=rail] — the rail is the one navigation every document shares")
+                               (> (count rails) 1) (conj (str (count rails) " rails — one document, one rail"))
+                               (and main (seq rails) (:before-main? (first rails)))
+                               (conj "the rail precedes <main> in document order — content first on every band, the rail after it")
+                               (empty? tops) (conj "no data-chrome=top bar — the section, the language and the theme controls every document shares"))]
+                 (if (empty? missing)
+                   {:score 1.0}
+                   {:score (max 0.0 (- 1.0 (* 0.34 (count missing))))
+                    :finding (str (str/join "; " missing)
+                                  " — emit the document through cloud-kotoba-dds.shell/document instead of composing the chrome per page")}))
+               {:unmeasured (str "ctx :shell " (pr-str shell) " is not a contract this judge knows (:app / :none)")}))}
 
    {:id :chrome-layers :weight 0.08
     :title "Declared chrome keeps its layer: a top bar sticks, a menu floats"

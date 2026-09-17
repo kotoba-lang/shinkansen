@@ -412,3 +412,47 @@
     (is (str/starts-with? (:finding (axis (audit/score-document {:file "l" :html doc} (dissoc ctx :locale-prefixes)) :links-resolve))
                           "links to nothing published: /en/docs/, /ja/nowhere/, /fr/")
         "without the declaration a prefixed link is just a path that is not published")))
+
+(deftest the-document-wears-the-declared-shell
+  ;; 2026-09-17: every chrome axis measured the chrome a document DECLARED;
+  ;; none measured that it declared any — kotoba.cloud's apex, support,
+  ;; blog, legal and eleven catalog pages wore the marketing header alone
+  ;; (no rail) and scored 97–100. The host declares the contract (ctx
+  ;; :shell :app); the axis measures the structure cloud-kotoba-dds.shell/
+  ;; document emits: a rail after <main>, a top bar.
+  (let [doc (fn [body] (str "<html><head></head><body>" body "</body></html>"))
+        base {:assets #{} :documents #{} :csp :none}
+        shell-ctx (assoc base :shell :app)
+        main "<main id=\"main\"><header data-chrome=\"top\">bar</header><h1>x</h1></main>"
+        rail "<nav data-chrome=\"rail\" aria-label=\"app\"><a href=\"/a\">A</a></nav>"
+        report (fn [body ctx] (axis (audit/score-document {:file "s" :html (doc body)} ctx) :shell))]
+    (testing "the contract is the host's to declare"
+      (is (= "no :shell contract in ctx — the host declares which shell its documents wear (:app) or that they wear none (:none)"
+             (:not-applicable (report (str main rail) base)))
+          "no declaration: not judged — and not a free 1.0 for a shell-less host")
+      (is (nil? (:score (report "<p>print</p>" base))))
+      (is (= "ctx :shell :none — the host declares this document wears no shell"
+             (:not-applicable (report "<main id=\"main\"><p>vault</p></main>" (assoc base :shell :none)))))
+      (is (str/starts-with? (:unmeasured (report (str main rail) (assoc base :shell :desktop))) "ctx :shell :desktop is not a contract this judge knows")
+          "an unknown contract is a refusal, not a pass"))
+    (testing "the structure shell/document emits passes"
+      (is (= 1.0 (:score (report (str "<a href=\"#main\">skip</a>" main rail "<footer>f</footer>") shell-ctx)))))
+    (testing "each miss is named"
+      (is (= "no nav[data-chrome=rail] — the rail is the one navigation every document shares — emit the document through cloud-kotoba-dds.shell/document instead of composing the chrome per page"
+             (:finding (report (str "<header class=\"kc-header\"><nav class=\"kc-nav\"><a href=\"/x\">x</a></nav></header>" main) shell-ctx)))
+          "the marketing header's nav is a nav, not the rail")
+      (is (str/starts-with? (:finding (report (str rail main) shell-ctx))
+                            "the rail precedes <main> in document order"))
+      (is (str/starts-with? (:finding (report (str "<main id=\"main\"><h1>x</h1></main>" rail) shell-ctx))
+                            "no data-chrome=top bar"))
+      (is (str/starts-with? (:finding (report (str main rail rail) shell-ctx)) "2 rails — one document, one rail"))
+      (is (str/starts-with? (:finding (report "<p>nothing</p>" shell-ctx)) "no <main> landmark; no nav[data-chrome=rail]")
+          "misses accumulate in one finding")
+      (is (= 0.0 (:score (report "<p>nothing</p>" shell-ctx))) "three misses floor the axis")
+      (is (< 0.6 (:score (report (str "<main id=\"main\"><h1>x</h1></main>" rail) shell-ctx)) 0.7) "one miss costs a third"))
+    (testing "the axis is in the score when declared and out of it when not"
+      (let [with (audit/score-document {:file "s" :html (doc "<main id=\"main\"><h1>x</h1></main>")} shell-ctx)
+            without (audit/score-document {:file "s" :html (doc "<main id=\"main\"><h1>x</h1></main>")} base)]
+        (is (< (:overall with) (:overall without)) "a shell-less document on a shell host scores lower than the same bytes on a host that declares none")
+        (is (some #(= :shell (:axis %)) (:findings with)))
+        (is (not (some #(= :shell (:axis %)) (:findings without))))))))
