@@ -216,7 +216,7 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
     src/shinkansen/form.cljc     schema（data）→ validate（coerce + field ごとの理由）→ field-attrs（aria-invalid / describedby）
     src/shinkansen/live.cljc     live regions（§2.7）: frame algebra（snapshot / delta / heartbeat / error、`reconcile` 純粋）+ keyed DOM patcher の runtime + `:live-stable` の helper
     examples/reference_app.cljc  本物の CID・本物の Biscuit authorizer を束ねた todo app（`npm run host`）
-    test/                        168 tests / 665 assertions, 0 fail 0 error（nbb via kbb）
+    test/                        168 tests / 667 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
 
@@ -550,7 +550,7 @@ framework の改善は co-scientist の approach で進める —— **測れな
 ## 3. 検証
 
 ```bash
-kbb -M:test        # 163 tests / 621 assertions, 0 failures, 0 errors
+kbb -M:test        # 163 tests / 618 assertions, 0 failures, 0 errors
 ```
 
 ⚠ `test_runner` の `-main` に**列挙されていない** test ns は require されても走らない。
@@ -637,6 +637,23 @@ db-cid + `"grant"` key 無し / `/todos` が todo と height 1 と **新しい C
 別 app の token → 403 `out-of-scope` / CIDv0 → 400 / 読めない grant → 403 `grant-unreadable`（app 自身の理由）/
 `:query` → data station / GET /invoke → 405 / reload stream が rebuild で `data: reload` / 失敗した rebuild が
 500 + `rebuild-failed` + 問題文。
+
+### 3.3 live e2e（`scripts/live-identity-e2e.cljk`、`npm run verify:live`、2026-09-17）
+
+本番の name host に対して session 無しで測る: receipts（apex の 1 組が全 host の正）→ `/` の bytes を hash して
+ETag の CID と一致（**weak 形 `W/"cid"` を許す** —— Cloudflare は圧縮時に strong ETag を weak にし、
+browser は受け取った形で `If-None-Match` を返す。`host/not-modified?` は `W/` を剥いで比較する。これは
+live e2e が見つけた: strong 比較だけでは browser に 304 が一度も出ない）→ Link rel=canonical → no-cache →
+If-None-Match strong / weak の両方で 304 → asset は identity を名乗らない → `POST /v1/invoke` grant 無しは 403。
+`SCANNED n / FAILED m / UNREACHABLE k`、届かない host は 2（pass ではない）。
+
+**production allow path**（2026-09-17、owner の Chrome の passkey session、console.kotoba.cloud 同 origin）:
+`POST /v1/database/session/tenants {name}` → tenant → `POST …/token {tenantId dbName permissions [data:read]}` →
+auth.kotoba.cloud が Biscuit を発行（15 分）→ `POST /v1/invoke` `Authorization: Biscuit <token>` → **200 /
+`receipt.reason granted` / `holder` = session の active DID / `requested kotoba://can/data:read`**、別 artifact →
+403。同じ e2e が 2 つの床割れを見つけた: tenants の転送が常に `/v1/biscuit/token` を向いていた（list が本番で
+一度も出ていなかった、app PR 322）、query の station が空だった（Worker は index を渡し load-fn は raw を
+読んでいた、app PR 327）。**unit が緑でも生成物を走らせるまで分からない**（8 問 #8）。
 
 **実ブラウザ**（Chrome、2026-09-16）: `/` の form に token と text を入れて add → interaction runtime の delegated
 submit → `fetch('/invoke')` Bearer → `{"ok":true,… "height":1,"receipt":{"reason":"pass/granted"}}` が `<pre>` に
