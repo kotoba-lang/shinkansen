@@ -7,6 +7,7 @@
     "mcp": "nbb -m shinkansen.stdio",
     "verify:authority": "kbb --backend sci --classpath src:../org-biscuitsec/src:../org-biscuitsec/test:../authority/src:../text/src scripts/verify-invoke-authority.cljk",
     "host": "kbb --backend sci --classpath src:examples:../content-address/src:../org-biscuitsec/src:../org-biscuitsec/test:../authority/src:../text/src -m reference-app",
-    "verify:host": "kbb --backend sci --classpath src:examples:../content-address/src:../org-biscuitsec/src:../org-biscuitsec/test:../authority/src:../text/src scripts/host-node-check.cljk"
+    "verify:host": "kbb --backend sci --classpath src:examples:../content-address/src:../org-biscuitsec/src:../org-biscuitsec/test:../authority/src:../text/src scripts/host-node-check.cljk",
+    "verify:live": "kbb --backend sci --classpath src:../content-address/src:../text/src scripts/live-identity-e2e.cljk"
   }
 }

@@ -82,6 +82,8 @@ and cannot claim a CID.
 npm run host           # http://127.0.0.1:8787/ â€” real CIDs as ETags, real Ed25519 Biscuit
                        # authorizer on POST /invoke, ssr /todos, dev live-reload
 npm run verify:host    # the same host on port 0, driven over HTTP: 17 cases, SCANNED 17 / FAILED 0
+npm run verify:live    # the contract on a LIVE name host (kotoba.cloud, docs.kotoba.cloud): bytes hash
+                       # to the ETag's CID, 304 strong + weak, assets claim nothing, /v1/invoke refuses
 ```
 
 The host is the one place every contract is DRIVEN rather than declared
@@ -97,7 +99,7 @@ npm run verify:authority   # the seam under a REAL authorizer: Ed25519 Biscuit â
                            # repos org-biscuitsec / authority / text at their west pins
 npm test           # nbb runner: requires each test ns explicitly (nbb 1.5.212
                    # no longer auto-requires), prints per-ns + TOTAL summary,
-                   # exits non-zero on failure. 163 tests / 621 assertions.
+                   # exits non-zero on failure. 163 tests / 618 assertions.
 ```
 
 ## MCP stdio server
