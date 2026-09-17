@@ -73,9 +73,9 @@
     :gap "preferences are a NAME-origin property: on {cid}.ipfs.* every document is its own origin (SPEC §1.8)"}
    {:axis :e :name :i18n
     :theirs "Next: middleware-based, DIY. SvelteKit: paraglide et al."
-    :ns 'shinkansen.locale :status :declared :consumers 0
-    :have "cookie negotiation, host-only cookie attributes, substitute :exact?, format"
-    :gap "app-kotoba-cloud cites the contract in docstrings and re-derives it in its own locale.cljk (no require) — SPEC §2.3 forbids exactly that"}
+    :ns 'shinkansen.locale :status :driven-by-product :consumers 1
+    :have "cookie negotiation with :explicit / :hint / :normalize, cookie attributes serialized in one place (:domain for a preference), substitute :exact?, format; app-kotoba-cloud's locale.cljk requires it (PR 294, 2026-09-16) instead of re-deriving the chain"
+    :gap "one consumer; the language switch UI is still each product's"}
    {:axis :e :name :uiux-fitness-function
     :theirs "none (vitest / playwright ecosystems)."
     :ns 'shinkansen.audit :status :driven-by-product :consumers 6
