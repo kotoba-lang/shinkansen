@@ -22,10 +22,15 @@ ADR-2609092600 の app 4 面を framework の primitive としてそのまま使
 
 - **HTML の link は CID そのもの**: `href="https://{cid}.ipfs.yataverse.com/"` が
   1 等公民（ADR-2609131630 の mirror zone が 2026-09-14 に bytes plane そのものになった）。
-  ⚠ **実測 2026-09-17: bytes plane への書き込み経路が無い。** archive の `PUT kotobase.net/ipfs/{cid}` は
-  zone rule で kotoba.cloud へ 308（そこに `/ipfs/` は無い）、`ipfs.yataverse.com` と `data.kotoba.cloud` は
-  PUT 405。2026-08-27 に archive へ publish 済みの CID も yataverse では 404。identity（CID）は名乗れるが
-  bytes は取れない —— `verify:live` の「canonical resolves」case がこれを赤で持つ（§3.3）。
+  **書き込み経路（2026-09-17 に測って直した）**: bytes plane は R2 `kotobase-graph-database-production` の
+  `ipld/{cid}` を最初に読む（net-kotobase/ipfs wrangler.jsonc）ので、**R2 に書けば `{cid}.ipfs.yataverse.com` は
+  即解決する** —— app-kotoba-cloud `npm run publish:receipts` がこれ（HEAD で既存 skip → `wrangler r2 object put`
+  → plane から読み戻してバイト比較）。archive の `PUT kotobase.net/ipfs/{cid}` は zone の Redirect Rule 4 本
+  （2026-09-14 16:03 JST 作成）が Worker `930ce2d0` の除外を無視して全 path・全 method を kotoba.cloud へ
+  飛ばしていたため 308 で死んでいた。同日 owner が rule を patch（document は `graph.kotoba.cloud/` へ、
+  `/.well-known/ /api/ /xrpc/ /pins /mcp /health /ipfs/ /ipns/` と非 GET は除外）→ `PUT /ipfs/x` は 401
+  （= 届いて auth を求める）に戻った。plane は raw を `application/octet-stream` で返す（CID 検証済み bytes の
+  面。render は entry host の仕事）。
 - **`:document` は自己完結の 1 ファイル**。CDN から asset を取りに行く document は
   CID を名乗れない — `shinkansen.publish/manifest` は外部 asset 参照を
   **理由付きで拒否**する（どの URL が違反かを `:external` で返す）。
@@ -656,9 +661,14 @@ live e2e が見つけた: strong 比較だけでは browser に 304 が一度も
 If-None-Match strong / weak の両方で 304 → asset は identity を名乗らない。seam は **api.kotoba.cloud** で
 1 回（grant 無し → 403 `no-grant-presented`、読めない → `grant-unreadable`。docs. は documents-only の host で
 `/v1/invoke` は 404 —— 設計どおり、e2e の前提が違っていた）。さらに **canonical resolves**（bytes plane `{cid}.ipfs.yataverse.com` が同じ bytes を返す）。
-2026-09-17、release 441beec4: `SCANNED 20 / FAILED 2` —— 落ちている 2 つが canonical resolves（両 host とも
-404）。**これは e2e の赤であって劇場ではない**: 書き込み経路が無い間はここが赤のまま（§1.1）。届かない host は
-2（pass ではない）。
+2026-09-17 午前、release 441beec4: `SCANNED 20 / FAILED 2` —— canonical resolves が両 host で 404（書き込み
+経路が無かった、§1.1）。同日 `publish:receipts` を回した 1 回目（09:45 の build、567 document、509 published /
+58 already / 0 FAIL）は**それでも赤だった** —— 回している間に別 release（favicon を全 host に）が出て 567 個全部の
+CID が変わっていた。main tip（e9e12f36）で `npm run render` し直すと receipt は live と 567/567 一致（render は
+再現可能）、その build で 2 回目を回した後: **順方向 SCANNED 567 / PUBLISHED 267 / ALREADY 300 / FAILED 0、逆方向 244 / 323 / 0（合わせて 511 PUT、56 は 1 回目と同じ bytes）** → `verify:live` **SCANNED 20 / FAILED 0 / UNREACHABLE 0（canonical resolves は両 host とも 200、served CID = ETag）**。届かない host は
+2（pass ではない）。**測れたこと**: 1 release が全 document を変えると CLI 経由の publish は 1 document ≈ 6–10 s
+（wrangler 起動が支配的）で 1 時間級 —— retrievability を release step のままにすると、次の release までに
+終わらないことがある。deploy chain（Worker 側の R2 binding か drain worker）に寄せるのが次段。
 
 **production allow path**（2026-09-17、owner の Chrome の passkey session、console.kotoba.cloud 同 origin）:
 `POST /v1/database/session/tenants {name}` → tenant → `POST …/token {tenantId dbName permissions [data:read]}` →
