@@ -201,7 +201,7 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
     src/shinkansen/mcp.cljc      MCP tool 宣言 + dispatch（純粋、handler 注入）
     src/shinkansen/locale.cljc   locale negotiation 契約（cookie ベース、path 非依存、純粋）
     src/shinkansen/viewport.cljc multi-screen-size 契約（viewport meta + xs band、静的 audit）
-    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（20 軸、理由付き finding）
+    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（22 軸、理由付き finding）
     src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
     src/shinkansen/interaction.cljc browser 側の契約（data-action / data-params、run stream、hydrate、theme、locale）+ 1 本の runtime
     src/shinkansen/theme.cljc    light / dark / system の契約（storage、属性、head-script、theme/set）
