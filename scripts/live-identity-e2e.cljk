@@ -83,15 +83,35 @@
                                          (and (= 200 status) (nil? link) (nil? marker)
                                               (not (str/starts-with? (str etag) "\"bafk")))
                                          (str status " etag=" etag))
-                                  (js/fetch (str base "/v1/invoke")
-                                            (clj->js {:method "POST" :headers {"content-type" "application/json"}
-                                                      :body (js/JSON.stringify (clj->js {:artifact (:artifact receipts)
-                                                                                         :input {:kind "query" :params {}}}))}))))
-                         (.then (fn [r] (-> (.text r) (.then (fn [t] [(.-status r) t])))))
-                         (.then (fn [[status t]]
-                                  (case! host "POST /v1/invoke without a grant is 403 no-grant-presented"
-                                         (and (= 403 status) (str/includes? t "no-grant-presented")) (str status)))))))))
+                                  ;; the API is not on every document host (docs. is documents-only,
+                                  ;; measured 2026-09-17: /v1/invoke there is 404 by design) — the seam
+                                  ;; is measured once, on the API host (check-invoke)
+                                  (:artifact receipts))))))))
         (.catch (fn [e] (swap! unreachable inc) (println (str "UNREACHABLE\t" host "\t" e)) nil)))))
+
+(defn- check-invoke
+  "The authority seam on the API host: without a grant, 403 by name; with a
+   grant that is not a token, 403 by name. (The allow path needs a Biscuit
+   from auth.kotoba.cloud, i.e. a passkey session — measured by hand from
+   the owner's browser, SPEC §3.3.)"
+  [artifact]
+  (let [host "api.kotoba.cloud"
+        post (fn [headers]
+               (-> (js/fetch (str "https://" host "/v1/invoke")
+                             (clj->js {:method "POST" :headers (merge {"content-type" "application/json"} headers)
+                                       :body (js/JSON.stringify (clj->js {:artifact artifact :input {:kind "query" :params {}}}))}))
+                   (.then (fn [r] (-> (.text r) (.then (fn [t] [(.-status r) t])))))))]
+    (if-not artifact
+      (do (swap! unreachable inc) (println (str "UNREACHABLE\t" host "\tno artifact to invoke")) nil)
+      (-> (post {})
+          (.then (fn [[status t]]
+                   (case! host "POST /v1/invoke without a grant is 403 no-grant-presented"
+                          (and (= 403 status) (str/includes? t "no-grant-presented")) (str status))
+                   (post {"authorization" "Biscuit not*a*token"})))
+          (.then (fn [[status t]]
+                   (case! host "POST /v1/invoke with an unreadable grant is 403 grant-unreadable"
+                          (and (= 403 status) (str/includes? t "grant-unreadable")) (str status))))
+          (.catch (fn [e] (swap! unreachable inc) (println (str "UNREACHABLE\t" host "\t" e)) nil))))))
 
 (defn -main []
   (let [argv (vec (js/Array.from js/process.argv))
@@ -99,6 +119,7 @@
         after (rest (drop-while #(not (str/ends-with? (str %) "live-identity-e2e.cljk")) argv))
         hosts (if (seq after) (vec after) ["kotoba.cloud" "docs.kotoba.cloud"])]
     (-> (reduce (fn [p h] (.then p (fn [_] (check-host h)))) (js/Promise.resolve nil) hosts)
+        (.then (fn [artifact] (check-invoke artifact)))
         (.then (fn [_]
                  (let [rs @results failed (count (remove :ok? rs))]
                    (println (str "SCANNED\t" (count rs) "\tFAILED\t" failed "\tUNREACHABLE\t" @unreachable))

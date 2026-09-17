@@ -644,8 +644,10 @@ db-cid + `"grant"` key 無し / `/todos` が todo と height 1 と **新しい C
 ETag の CID と一致（**weak 形 `W/"cid"` を許す** —— Cloudflare は圧縮時に strong ETag を weak にし、
 browser は受け取った形で `If-None-Match` を返す。`host/not-modified?` は `W/` を剥いで比較する。これは
 live e2e が見つけた: strong 比較だけでは browser に 304 が一度も出ない）→ Link rel=canonical → no-cache →
-If-None-Match strong / weak の両方で 304 → asset は identity を名乗らない → `POST /v1/invoke` grant 無しは 403。
-`SCANNED n / FAILED m / UNREACHABLE k`、届かない host は 2（pass ではない）。
+If-None-Match strong / weak の両方で 304 → asset は identity を名乗らない。seam は **api.kotoba.cloud** で
+1 回（grant 無し → 403 `no-grant-presented`、読めない → `grant-unreadable`。docs. は documents-only の host で
+`/v1/invoke` は 404 —— 設計どおり、e2e の前提が違っていた）。`SCANNED 18 / FAILED 0 / UNREACHABLE 0`
+（2026-09-17、release 441beec4）。届かない host は 2（pass ではない）。
 
 **production allow path**（2026-09-17、owner の Chrome の passkey session、console.kotoba.cloud 同 origin）:
 `POST /v1/database/session/tenants {name}` → tenant → `POST …/token {tenantId dbName permissions [data:read]}` →
