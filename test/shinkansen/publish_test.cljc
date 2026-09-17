@@ -7,7 +7,10 @@
         m (publish/manifest {:file "/tmp/page.html" :html html :entry-name "lake-index"})]
     (is (true? (:ok m)))
     (is (= "lake-index" (:entry-name m)))
-    (is (contains? (:planes m) :mirror))))
+    ;; 2026-09-14: the bytes plane is yataverse.com; the kotobase.net suffix is
+    ;; retired and named as such so a manifest cannot silently point at a 522
+    (is (= "https://{cid}.ipfs.yataverse.com" (get-in m [:planes :bytes])))
+    (is (contains? (:planes m) :retired))))
 
 (deftest document-with-external-asset-is-refused-by-name
   ;; ADR-2609092600 :document rule: a document that fetches its own assets

@@ -18,9 +18,15 @@
 (def ^:const bytes-planes
   "The two Location planes a published document answers on. Identity is
   the CID alone; these are configuration, recorded for the manifest."
-  {:archive "https://kotobase.net/ipfs/{cid}"        ; backed by B2, IPNI-advertised
-   :origin  "https://{cid}.ipfs.kotobase.net"        ; R2-backed web/bytes plane
-   :mirror  "https://{cid}.ipfs.yataverse.com"})     ; the yataverse mirror zone (ADR-2609131630)
+  ;; 2026-09-14 owner directive (net-kotobase/ipfs 752279d): the bytes plane is
+  ;; yataverse.com; `{cid}.ipfs.kotobase.net` is retired (its route is gone,
+  ;; the DNS answers 522). Measured 2026-09-17: the archive PUT at the
+  ;; kotobase.net apex is redirected (308) to kotoba.cloud by a zone rule and
+  ;; the bytes plane has no PUT (405) — there is no write path today; a
+  ;; document that names a CID is identified, not yet retrievable (SPEC §1.1).
+  {:archive "https://kotobase.net/ipfs/{cid}"        ; the historic write endpoint (B2, IPNI-advertised)
+   :bytes   "https://{cid}.ipfs.yataverse.com"       ; the bytes plane (owner directive 2026-09-14)
+   :retired "https://{cid}.ipfs.kotobase.net"})      ; no Worker behind it since 2026-09-14
 
 (def ^:const two-plane-note
   "Documented failure mode of the two-plane publish (measured, not
@@ -34,9 +40,11 @@
 
 (defn- gateway-url?
   "A CID-addressed gateway URL is the content itself, not an external
-  asset. The URL forms are the four planes: path-style (`https://
-  ipfs.kotobase.net/ipfs/{cid}`) and subdomain-style (`https://{cid}
-  .ipfs.kotobase.net/`). The subdomain form does NOT start with the
+  asset. The URL forms are the planes: path-style (`https://
+  ipfs.yataverse.com/ipfs/{cid}`, and the legacy `ipfs.kotobase.net/ipfs/
+  {cid}` which 301s into it) and subdomain-style (`https://{cid}
+  .ipfs.yataverse.com/`; the retired `{cid}.ipfs.kotobase.net` form is
+  still recognised so an old link is not called external). The subdomain form does NOT start with the
   gateway host — the CID label comes first — so the check is: host is
   exactly a gateway helper host, or host ENDS WITH one of the
   identity-in-the-label suffixes (.ipfs./.ipns. under kotobase.net /
