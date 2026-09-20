@@ -21,6 +21,8 @@
     :unique-ids        no duplicate id= — getElementById binds the first
                        only, so every later control with that id is dead
     :nav-one-home      one nav entry per destination, one data-current
+    :spa-views         a declared fragment SPA has one nav entry and one
+                       section per view, with exactly one visible section
     :nav-before-content on the phone band a long nav precedes the content;
                        > 8 nav links before <main> means screens of nav
     :skip-link         a nav before <main> needs a[href=#main]
@@ -395,6 +397,36 @@
                                 (when (> currents 1)
                                   (str (when (seq dup-hrefs) "; ") currents " items marked current"))
                                 " — one fact, one home: a person cannot tell which entry is the page they are on")})))}
+
+   {:id :spa-views :weight 0.10
+    :title "Fragment SPA views are one generated nav + one section each"
+    :check (fn [{:keys [els]} _]
+             (let [roots (filter #(contains? (:attrs %) "data-spa") els)]
+               (if (empty? roots)
+                 {:not-applicable "the document declares no data-spa root"}
+                 (let [root (first roots)
+                       inside (filter #(contains? (:ancestors %) (:order root)) els)
+                       links (filter #(contains? (:attrs %) "data-spa-view") inside)
+                       sections (filter #(contains? (:attrs %) "data-view") inside)
+                       link-ids (mapv #(get-in % [:attrs "data-spa-view"]) links)
+                       section-ids (mapv #(get-in % [:attrs "data-view"]) sections)
+                       href-bad (keep (fn [e]
+                                        (let [id (get-in e [:attrs "data-spa-view"])
+                                              href (get-in e [:attrs "href"])]
+                                          (when (not= href (str "#" id)) (str id "→" href))))
+                                      links)
+                       visible-n (count (remove :hidden? sections))
+                       problems (cond-> []
+                                  (> (count roots) 1) (conj (str (count roots) " data-spa roots"))
+                                  (not= (frequencies link-ids) (frequencies section-ids))
+                                  (conj (str "nav views " (pr-str link-ids) " do not match sections " (pr-str section-ids)))
+                                  (seq href-bad) (conj (str "fragment href mismatch: " (str/join ", " href-bad)))
+                                  (not= 1 visible-n) (conj (str visible-n " visible view sections")))]
+                   (if (empty? problems)
+                     {:score 1.0}
+                     {:score 0.0
+                      :finding (str (str/join "; " problems)
+                                    " — an SPA view is data: generate navigation and sections from the same table and keep exactly one current view") })))))}
 
    {:id :nav-before-content :weight 0.10
     :title "Nav links that precede <main> (phone: screens of nav before content)"

@@ -277,6 +277,18 @@
                        "the chrome's position rules live there")
         "declared chrome with its stylesheet missing is unmeasured, not passed")))
 
+(deftest fragment-spa-views-come-from-one-view-table
+  (let [doc (fn [body] (str "<html><head></head><body><main id=\"main\">" body "</main></body></html>"))
+        ctx {:assets #{} :documents #{} :csp :none}
+        run (fn [body] (audit/score-document {:file "spa" :html (doc body)} ctx))
+        good "<div data-spa=\"views\"><nav><a href=\"#overview\" data-spa-view=\"overview\">Overview</a><a href=\"#users\" data-spa-view=\"users\">Users</a></nav><section data-view=\"overview\">a</section><section data-view=\"users\" hidden>b</section></div>"
+        missing "<div data-spa=\"views\"><nav><a href=\"#overview\" data-spa-view=\"overview\">Overview</a><a href=\"/users\" data-spa-view=\"users\">Users</a></nav><section data-view=\"overview\">a</section></div>"]
+    (is (= 1.0 (:score (axis (run good) :spa-views))))
+    (is (str/includes? (:finding (axis (run missing) :spa-views)) "do not match sections"))
+    (is (str/includes? (:finding (axis (run missing) :spa-views)) "fragment href mismatch"))
+    (is (= "the document declares no data-spa root"
+           (:not-applicable (axis (run "<p>ordinary document</p>") :spa-views))))))
+
 (deftest class-names-have-a-rule-in-the-shipped-css
   ;; the failure this axis was seeded from: docs.kotoba.cloud/graph/ emitted
   ;; the marketing header/footer markup but inlined only the token bridge —
