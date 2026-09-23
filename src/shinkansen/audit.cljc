@@ -915,19 +915,19 @@
                               (when unmeasured {:axis id :why unmeasured}))
                             results))}))
 
-(defn audit
-  "Audit many documents: `docs` is a seq of {:file :html} (+ an optional
-   per-document :ctx merged over the shared ctx — a docs-host page links
-   against its own document set). Returns
-   {:overall mean :documents {file -> report} :findings [...] :unmeasured [...]}
-   with findings aggregated per axis and sorted by recoverable headroom
-   (weight × summed shortfall), heaviest first — the hypothesis seed list
-   for shinkansen.coscientist. An audit of zero documents is :overall 0.0
+(defn aggregate
+  "The pure half of `audit`: per-document reports in, the run's report out.
+
+   Extracted 2026-09-23 so a CALLER can memoise `score-document` — the
+   expensive half — and still get this exact aggregation rather than a second
+   copy of it. kotoba.cloud's uiux-audit re-scored all 606 documents on every
+   run because there was no seam here; two implementations of this would have
+   been two answers with nobody able to say which was right.
+
+   `reports` is {file -> (score-document …)}. Zero documents is :overall 0.0
    with :empty? true — never a clean pass."
-  ([docs] (audit docs {}))
-  ([docs ctx]
-   (let [reports (into {} (map (fn [d] [(:file d) (score-document d (merge ctx (:ctx d)))]) docs))
-         n (count reports)
+  [reports]
+  (let [n (count reports)
          overall (if (zero? n) 0.0 (/ (reduce + (map :overall (vals reports))) n))
          findings (->> axes
                        (keep (fn [{:keys [id weight]}]
@@ -950,4 +950,17 @@
       :empty? (zero? n)
       :documents reports
       :findings findings
-      :unmeasured unmeasured})))
+      :unmeasured unmeasured}))
+
+(defn audit
+  "Audit many documents: `docs` is a seq of {:file :html} (+ an optional
+   per-document :ctx merged over the shared ctx — a docs-host page links
+   against its own document set). Returns
+   {:overall mean :documents {file -> report} :findings [...] :unmeasured [...]}
+   with findings aggregated per axis and sorted by recoverable headroom
+   (weight × summed shortfall), heaviest first — the hypothesis seed list
+   for shinkansen.coscientist. An audit of zero documents is :overall 0.0
+   with :empty? true — never a clean pass."
+  ([docs] (audit docs {}))
+  ([docs ctx]
+   (aggregate (into {} (map (fn [d] [(:file d) (score-document d (merge ctx (:ctx d)))]) docs)))))
