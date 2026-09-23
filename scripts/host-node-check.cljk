@@ -71,6 +71,21 @@
                  (fetch-text (str base "/") {:headers {"if-none-match" @etag0}})))
         (.then (fn [{:keys [status]}]
                  (case! "If-None-Match with the CID answers 304" (= 304 status) (str status))
+                 (fetch-text (str base "/") {})))
+        (.then (fn [{:keys [status headers text]}]
+                 ;; the second GET is answered by serve's station table — the
+                 ;; hit counter says so; a correct slow-path answer would not
+                 (case! "a repeat GET / is a station-table hit with the same bytes, ETag and length"
+                        (and (= 200 status) (= @etag0 (get headers "etag"))
+                             (pos? ((:table-hits server)))
+                             (str/includes? text "/__shinkansen/reload")
+                             (= (str (.-length (js/Buffer.from text "utf8"))) (get headers "content-length")))
+                        (str status " " (get headers "etag")))
+                 (fetch-text (str base "/") {:method "HEAD"})))
+        (.then (fn [{:keys [status headers text]}]
+                 (case! "HEAD / answers the headers and no body"
+                        (and (= 200 status) (= @etag0 (get headers "etag")) (= "" text))
+                        (str status " body " (count text)))
                  (fetch-text (str base "/nope/deeper") {})))
         (.then (fn [{:keys [status text]}]
                  (case! "unknown name is a 404 that names :no-match"

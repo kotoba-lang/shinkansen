@@ -48,6 +48,81 @@
   (.writeHead res status (clj->js headers))
   (.end res (str body)))
 
+;; ── the station table ─────────────────────────────────────────────────────
+;;
+;; A document's ETag is the CID of its bytes, so once the host has answered a
+;; URL the answer is a value: the bytes, the headers, the 304. The table
+;; keeps that value per URL in the transport's own terms (a Buffer, a flat
+;; header array) so a repeat request does no Clojure work beyond a Map
+;; lookup — for :static. An :ssr entry re-runs its load-fn with the same
+;; params and answers from the table only when the data is `=` to the data
+;; the bytes were rendered from (host/response-plan); anything else — a
+;; different value, a throwing load — goes to `host/handle`, which answers
+;; and refreshes the entry. Swapping the ctx empties the table.
+
+(def ^:const table-limit
+  "Entries before the table is emptied and refilled (bounded memory under a
+   crawl of distinct URLs; a hot set refills in one request per URL)."
+  4096)
+
+(defn- flat-headers [headers body-length]
+  (let [a #js []]
+    (doseq [[k v] headers] (.push a k (str v)))
+    (.push a "content-length" (str body-length))
+    a))
+
+(defn- station [{:keys [response etag kind load-fn params data]}]
+  (let [body (js/Buffer.from (str (:body response)) "utf8")
+        cid (subs etag 1 (dec (count etag)))]
+    #js {:ssr (= kind :ssr)
+         :etag etag
+         :weak (str "W/" etag)
+         :head (flat-headers (:headers response) (.-length body))
+         :h304 #js ["etag" etag]
+         :body body
+         ;; May the table answer this :ssr station? Only when the load,
+         ;; re-run with the station's params, answers a value `=` to the
+         ;; data the bytes were rendered from. A throwing load is a no.
+         :fresh (fn [] (try (= data (load-fn params)) (catch :default _ false)))
+         ;; If-None-Match that is a list: the host's full comparison
+         :listMatch (fn [inm] (host/not-modified? inm cid))}))
+
+(def ^:private answer-station
+  "(table, req, res) → true when the table answered, false to fall through.
+
+  The one piece of this namespace written in the host's language: a hit is
+  a Map lookup, a header compare and a write — mechanism, no decision — and
+  interpreted per request it cost ~11 us of the ~58 us a static response
+  took (kbb/sci, bench/run.cljk cpu-us, 2026-09-23). The decisions stay in
+  Clojure and are called from here: `fresh` (an :ssr station's load, `=`)
+  and `listMatch` (an If-None-Match list, `host/not-modified?`)."
+  (js/Function.
+   "table" "req" "res"
+   (str "var m = req.method;"
+        "if (m !== 'GET' && m !== 'HEAD') return false;"
+        "var st = table.get(req.url);"
+        "if (st === undefined) return false;"
+        "if (st.ssr && !st.fresh()) return false;"
+        "table.hits = (table.hits | 0) + 1;"
+        "var inm = req.headers['if-none-match'];"
+        "if (inm !== undefined && (inm === st.etag || inm === st.weak ||"
+        "    ((inm.indexOf(',') >= 0 || inm.indexOf(' ') >= 0) && st.listMatch(inm)))) {"
+        "  res.writeHead(304, st.h304); res.end(); return true; }"
+        "res.writeHead(200, st.head);"
+        "if (m === 'HEAD') res.end(); else res.end(st.body);"
+        "return true;")))
+
+(def ^:private listener
+  "(table, fast, slow) → the node:http listener: the table first, then the
+   Clojure handler. A plain JS closure so a hit never enters the interpreter."
+  (js/Function. "table" "fast" "slow"
+                "return function (req, res) { if (!fast(table, req, res)) slow(req, res); };"))
+
+(defn- remember! [^js table url resp]
+  (when-let [plan (::host/plan resp)]
+    (when (>= (.-size table) table-limit) (.clear table))
+    (.set table url (station plan))))
+
 (defn- error-ctx
   "The ctx a failed rebuild serves: the last good tree, every leaf replaced
   by the error document, so the browser shows WHY."
@@ -68,7 +143,8 @@
         broadcast! (fn [msg]
                      (doseq [^js res @clients]
                        (try (.write res (str "data: " msg "\n\n")) (catch :default _ nil))))
-        swap-ctx! (fn [new-ctx] (reset! current new-ctx) (broadcast! "reload") new-ctx)
+        table (js/Map.)
+        swap-ctx! (fn [new-ctx] (reset! current new-ctx) (.clear table) (broadcast! "reload") new-ctx)
         rebuild! (fn []
                    (when rebuild-fn
                      (let [r (try (rebuild-fn @current)
@@ -82,16 +158,35 @@
                     (when-let [t @timer] (js/clearTimeout t))
                     (reset! timer (js/setTimeout rebuild! debounce-ms)))
         watchers (atom [])
-        server (http/createServer
-                (fn [^js req ^js res]
-                  (let [url (.-url req)]
-                    (if (= url "/__shinkansen/reload")
+        respond! (fn [^js res url resp]
+                   (when (::host/plan resp) (remember! table url resp))
+                   (write-response res resp))
+        threw (fn [^js res e]
+                (write-response res {:status 500
+                                     :headers {"content-type" "application/json"}
+                                     :body (host/->json {:ok false :reason :handler-threw
+                                                         :error (str (ex-message e))})}))
+        slow (fn [^js req ^js res]
+                  (let [url (.-url req)
+                        method (.-method req)
+                        get? (or (= "GET" method) (= "HEAD" method))]
+                    (cond
+                      (= url "/__shinkansen/reload")
                       (do (.writeHead res 200 #js {"content-type" "text/event-stream"
                                                    "cache-control" "no-cache"
                                                    "connection" "keep-alive"})
                           (.write res ": open\n\n")
                           (swap! clients conj res)
                           (.on req "close" (fn [] (swap! clients disj res))))
+
+                      ;; GET/HEAD carry no body the host reads: answer now
+                      get?
+                      (try (respond! res url (host/handle {:method method :url url
+                                                           :headers (headers->clj req) :body nil}
+                                                          @current))
+                           (catch :default e (threw res e)))
+
+                      :else
                       (-> (read-body req)
                           (.then (fn [raw]
                                    (let [body (parse-json raw)]
@@ -99,16 +194,14 @@
                                        (write-response res {:status 400
                                                             :headers {"content-type" "application/json"}
                                                             :body (host/->json {:ok false :reason :body-not-json})})
-                                       (write-response res (host/handle {:method (.-method req)
+                                       (write-response res (host/handle {:method method
                                                                          :url url
                                                                          :headers (headers->clj req)
                                                                          :body body}
                                                                         @current))))))
-                          (.catch (fn [e]
-                                    (write-response res {:status 500
-                                                         :headers {"content-type" "application/json"}
-                                                         :body (host/->json {:ok false :reason :handler-threw
-                                                                             :error (str (ex-message e))})}))))))))]
+                          (.catch (fn [e] (threw res e)))))))
+        ;; a station the table may answer never reaches `slow`
+        server (http/createServer (listener table answer-station slow))]
     (js/Promise.
      (fn [resolve reject]
        (.on server "error" reject)
@@ -121,6 +214,9 @@
                             :port (.-port (.address server))
                             :swap! swap-ctx!
                             :rebuild! rebuild!
+                            ;; responses the station table answered (a test can
+                            ;; tell a hit from a correct slow-path answer)
+                            :table-hits (fn [] (or (.-hits table) 0))
                             :stop (fn []
                                     (doseq [^js w @watchers] (.close w))
                                     (doseq [^js c @clients] (try (.end c) (catch :default _ nil)))

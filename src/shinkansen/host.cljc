@@ -183,6 +183,25 @@
                        (document-headers {:cid cid :mode mode :revalidate-seconds revalidate-seconds}))
        :body html})))
 
+(defn- response-plan
+  "What a transport may remember about a 200 document, and on what condition.
+
+  The ETag is the CID of the bytes, so the bytes are a function of what
+  produced them. For :ssg / :isr (and an :ssr leaf with no :load-fn) that
+  is the URL alone: the load ran as :build, the layouts see the URL's
+  params — `:static`. For :ssr it is (params, data), since the render is a
+  query (render.cljc): `:ssr` carries the load-fn, the params and the data
+  this response was rendered from, and the transport may reuse the
+  response only after re-running the load and finding a value `=` to that
+  data. The load still runs per request; only the render and the hash are
+  skipped. A document that renders from anything else (a clock, a random
+  source) declares `:memo? false` and gets no plan."
+  [{:keys [mode doc params loaded response etag]}]
+  (if (and (= :ssr mode) (:load-fn doc))
+    {:kind :ssr :response response :etag etag
+     :load-fn (:load-fn doc) :params params :data (:data loaded)}
+    {:kind :static :response response :etag etag}))
+
 (defn- serve-document
   [{:keys [documents cid-fn dev?]} {:keys [document layouts params]} query headers path]
   (let [doc (get documents document)
@@ -193,25 +212,32 @@
                                                               " is not in :documents")}))
                      {:dev? dev?})
       (let [loaded (when (:load-fn doc)
+                     ;; the page inlines the value; it does not address it
                      (load/run-load {:mode (if (= :ssr (:mode doc)) :edge :build)
-                                     :load-fn (:load-fn doc) :params params :cid-fn cid-fn}))]
+                                     :load-fn (:load-fn doc) :params params :address? false}))]
         (if (and loaded (not (:ok loaded)))
           (html-response 500 (:html (error-document {:path path :reason (:reason loaded)
                                                      :detail (:error loaded)}))
                          {:dev? dev?})
+          ;; no cid-fn into render: the identity is of the bytes SERVED, which
+          ;; are the render output wrapped in its layouts — hashed once, below
           (let [r (render/render-document {:mode (:mode doc) :render-fn (:render-fn doc)
                                            :html (:html doc) :params params
-                                           :data (:data loaded) :cid-fn cid-fn})]
+                                           :data (:data loaded)})]
             (if-not (:ok r)
               (html-response 500 (:html (error-document {:path path :reason (:reason r)
                                                          :detail (:error r)}))
                              {:dev? dev?})
               (let [html (compose-layouts (:html r) layouts params)
-                    cid (or (:document-cid r) (when cid-fn (cid-fn html)))]
-                (html-response (or (:status doc) 200) html {:cid cid :mode (:mode r)
-                                         :revalidate-seconds (:revalidate-seconds doc)
-                                         :dev? dev?
-                                         :etag-in (header headers "if-none-match")})))))))))
+                    cid (when cid-fn (cid-fn html))
+                    status (or (:status doc) 200)
+                    opts {:cid cid :mode (:mode r) :revalidate-seconds (:revalidate-seconds doc) :dev? dev?}
+                    resp (html-response status html (assoc opts :etag-in (header headers "if-none-match")))]
+                (cond-> resp
+                  (and cid (= 200 status) (not (false? (:memo? doc))))
+                  (assoc ::plan (response-plan {:mode (:mode r) :doc doc :params params :loaded loaded
+                                                :response (html-response 200 html opts)
+                                                :etag (etag-of cid)})))))))))))
 
 ;; ── invoke ────────────────────────────────────────────────────────────────
 
@@ -299,7 +325,10 @@
 (defn handle
   "One request → one response, as data.
      req: {:method \"GET\"|\"POST\"|… :url \"/path?q\" :headers {…} :body <parsed JSON or nil>}
-     →    {:status n :headers {…} :body string}"
+     →    {:status n :headers {…} :body string}
+  A GET/HEAD document response may also carry `:shinkansen.host/plan`
+  (see `response-plan`) — what the transport may remember and the one
+  condition under which it may answer from memory."
   [{:keys [method url headers] :as req} {:keys [tree invoke-path dev? cid-fn] :as ctx}]
   (let [[path query] (split-url url)
         method (str/upper-case (str method))
