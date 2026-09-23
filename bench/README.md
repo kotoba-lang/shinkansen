@@ -19,6 +19,16 @@ Next.js and Nuxt are built by the harness on first use (`next build` /
 `.output/` after changing a fixture), then run as production servers
 (`next start`, `node .output/server/index.mjs`) on a port the harness picks.
 
+Publish a run (writes `docs/bench.md` + `docs/index.html`, the GitHub Pages
+site served from `main` `/docs`; refuses a results file with an INVALID median):
+
+```bash
+K=<superproject>/orgs/kotoba-lang
+KOTOBA_LANG=$K kbb --backend sci \
+  --classpath $K/jp-go-digital-design-system/src:$K/html/src:$K/css/src:$K/text/src \
+  bench/report.cljk bench/results/<run>.edn
+```
+
 Exit 0 only when every median is valid; 1 on any INVALID; 2 when a server
 did not start. Output: `RESULT fw scenario rps p99ms cpu-us OK|INVALID`.
 

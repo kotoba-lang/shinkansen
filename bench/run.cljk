@@ -262,7 +262,9 @@
                                                   :machine {:cpus (count (os/cpus))
                                                             :node js/process.version}
                                                   :load {:connections connections :duration duration
-                                                         :workers workers :rounds rounds}
+                                                         :workers workers :rounds rounds :warmup warmup
+                                                         ;; the machine is shared: say how shared
+                                                         :loadavg (vec (os/loadavg))}
                                                   :medians (mapv #(select-keys % [:fw :scenario :rps :p99 :cpu-us :valid?]) meds)})))
                    ;; exitCode, not exit(): on macOS a piped stdout is asynchronous and
                    ;; exit() drops the RESULT lines still queued (measured: exit 0, no output)

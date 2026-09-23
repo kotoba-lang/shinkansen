@@ -94,6 +94,10 @@ counts — and its test pins that every namespace it names exists.
 
 ## Performance (bench/, measured 2026-09-23)
 
+Published: **<https://kotoba-lang.github.io/shinkansen/>** (and
+[`docs/bench.md`](docs/bench.md)) — both generated from the results file by
+`bench/report.cljk`, so they cannot drift from the run.
+
 Server CPU per response (µs, median of 3 interleaved rounds after a 2 s
 warm-up; lower is better — [`bench/README.md`](bench/README.md) says why this,
 not req/s, is the ranking number on a shared machine, and how Next.js / Nuxt
