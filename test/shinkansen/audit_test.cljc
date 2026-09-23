@@ -456,3 +456,25 @@
         (is (< (:overall with) (:overall without)) "a shell-less document on a shell host scores lower than the same bytes on a host that declares none")
         (is (some #(= :shell (:axis %)) (:findings with)))
         (is (not (some #(= :shell (:axis %)) (:findings without))))))))
+
+(deftest aggregate-is-audits-own-second-half
+  ;; `aggregate` exists so a caller can memoise `score-document` and still get
+  ;; this aggregation rather than a second copy of it. That is only true while
+  ;; the two agree, so this compares them on the same documents — including
+  ;; the shapes the aggregation has opinions about: a document with a finding,
+  ;; one without, and none at all.
+  (let [doc (fn [body] (str "<html><head></head><body>" body "</body></html>"))
+        docs [{:file "/a/" :html (doc "<main id=\"main\"><h1>a</h1></main>")}
+              {:file "/b/" :html (doc "<p>no landmark, no heading</p>")}]
+        ctx {:assets #{} :documents #{} :csp :none}
+        by-audit (audit/audit docs ctx)
+        reports (into {} (map (fn [d] [(:file d) (audit/score-document d (merge ctx (:ctx d)))]) docs))
+        by-aggregate (audit/aggregate reports)]
+    (is (= by-audit by-aggregate)
+        "audit is score-document over the docs, then aggregate — nothing else")
+    (is (= (:overall by-audit) (:overall by-aggregate)))
+    (is (= (mapv :axis (:findings by-audit)) (mapv :axis (:findings by-aggregate)))))
+  (testing "zero documents is not a clean pass on either path"
+    (is (= (audit/audit []) (audit/aggregate {})))
+    (is (true? (:empty? (audit/aggregate {}))))
+    (is (= 0.0 (:overall (audit/aggregate {}))))))
