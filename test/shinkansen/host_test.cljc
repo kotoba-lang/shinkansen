@@ -122,3 +122,37 @@
   (is (not (host/not-modified? nil "cid-1")))
   (is (not (host/not-modified? "\"cid-1\"" nil)) "no CID can never match"))
 
+
+(deftest the-etag-is-the-cid-of-the-bytes-served-layouts-included
+  ;; before 2026-09-23 an :ssr leaf under a layout answered the CID of the
+  ;; render output BEFORE the layout wrapped it — an ETag naming bytes that
+  ;; were never sent
+  (let [r (get* (ctx) "/items")]
+    (is (str/starts-with? (:body r) "<!-- layout -->"))
+    (is (= (str "\"cid-" (hash (:body r)) "\"") (get-in r [:headers "etag"])))))
+
+(deftest a-document-response-carries-the-plan-a-transport-may-remember
+  (testing ":ssg — a function of the URL alone"
+    (let [p (::host/plan (get* (ctx) "/"))]
+      (is (= :static (:kind p)))
+      (is (= page (get-in p [:response :body])))
+      (is (= (str "\"cid-" (hash page) "\"") (:etag p)))))
+  (testing ":ssr with a load — reusable only while the load answers = data"
+    (let [c (ctx)
+          p (::host/plan (get* c "/items"))]
+      (is (= :ssr (:kind p)))
+      (is (= {:n 0} (:data p)))
+      (is (= (:data p) ((:load-fn p) (:params p))) "fresh now")
+      (swap! (get-in c [:app :state]) update-in [:db :n] inc)
+      (is (not= (:data p) ((:load-fn p) (:params p))) "stale once the state moves")))
+  (testing "a 304 still carries the full 200 the transport can keep"
+    (let [e (get-in (get* (ctx) "/") [:headers "etag"])
+          r (get* (ctx) "/" {"if-none-match" e})]
+      (is (= 304 (:status r)))
+      (is (= 200 (get-in r [::host/plan :response :status])))
+      (is (= page (get-in r [::host/plan :response :body])))))
+  (testing "no plan: :memo? false, an error, a 404"
+    (let [docs (assoc-in (:documents (ctx)) [:items :memo?] false)]
+      (is (nil? (::host/plan (get* (ctx {:documents docs}) "/items"))) ":memo? false opts out"))
+    (is (nil? (::host/plan (get* (ctx {:documents {}}) "/"))) "500")
+    (is (nil? (::host/plan (get* (ctx) "/nope"))) "404")))

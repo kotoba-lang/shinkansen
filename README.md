@@ -82,7 +82,7 @@ and cannot claim a CID.
 ```bash
 npm run host           # http://127.0.0.1:8787/ — real CIDs as ETags, real Ed25519 Biscuit
                        # authorizer on POST /invoke, ssr /todos, dev live-reload
-npm run verify:host    # the same host on port 0, driven over HTTP: 17 cases, SCANNED 17 / FAILED 0
+npm run verify:host    # the same host on port 0, driven over HTTP: 19 cases, SCANNED 19 / FAILED 0
 npm run verify:live    # the contract on a LIVE name host (kotoba.cloud, docs.kotoba.cloud): bytes hash
                        # to the ETag's CID, 304 strong + weak, assets claim nothing, /v1/invoke refuses
 ```
@@ -92,6 +92,28 @@ The host is the one place every contract is DRIVEN rather than declared
 product still has to pick up — declared vs driven, with measured consumer
 counts — and its test pins that every namespace it names exists.
 
+## Performance (bench/, measured 2026-09-23)
+
+Server CPU per response (µs, median of 3 interleaved rounds; lower is better —
+[`bench/README.md`](bench/README.md) says why this, not req/s, is the ranking
+number on a shared machine). Apple M4, node 26.7.0, load average ~180 during
+the run; `bench/results/2026-09-23.edn` has req/s and p99 too.
+
+| scenario | shinkansen | node:http | fastify | hono | express |
+|---|---|---|---|---|---|
+| `static` (11.6 KB :ssg page) | **41.7** | 45.3 | 65.1 | 61.6 | 75.2 |
+| `304` (If-None-Match = CID) | **30.3** | 31.6 | 34.6 | 35.2 | 42.5 |
+| `ssr` (params + data, cache hit) | 42.3 | **39.0** | 41.2 | 43.4 | 63.4 |
+| `ssr-miss` (data changes every request) | 549.4 | 53.3 | **51.3** | 56.7 | 74.6 |
+
+The first three come from content addressing: an answered URL is a value, so
+`shinkansen.serve` answers a repeat from a per-URL table of pre-encoded bytes
+(:ssr only after its load answers `=` data). `ssr` is within the run-to-run
+spread of node:http / fastify (an earlier run measured 36.3 vs 40.0 / 39.8).
+`ssr-miss` is ~10× worse: the app's render and CID encoding run interpreted
+under kbb/sci while the others run V8-JIT'd JS. Closing that needs an AOT
+build, which does not exist yet.
+
 ## Test
 
 ```bash
@@ -100,7 +122,7 @@ npm run verify:authority   # the seam under a REAL authorizer: Ed25519 Biscuit �
                            # repos org-biscuitsec / authority / text at their west pins
 npm test           # nbb runner: requires each test ns explicitly (nbb 1.5.212
                    # no longer auto-requires), prints per-ns + TOTAL summary,
-                   # exits non-zero on failure. 163 tests / 618 assertions.
+                   # exits non-zero on failure. 172 tests / 703 assertions.
 ```
 
 ## MCP stdio server

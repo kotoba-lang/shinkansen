@@ -35,20 +35,27 @@
     {:ok true :data <value> :data-cid \"…\" :mode :build|:edge}
   or {:ok false :reason :load-failed :error <message>}.
   `load-fn` receives the params map (path params, query, locale — what
-  the edge knows). `cid-fn` is the injected hash."
-  [{:keys [mode load-fn params cid-fn]}]
+  the edge knows). `cid-fn` is the injected hash.
+
+  `:address? false` answers {:ok true :data … :mode …} with no :text and no
+  :data-cid: a caller that only inlines the value (the host rendering a
+  page) does not print and hash it on every request. The fail-closed half
+  is unchanged — a throwing load is still :load-failed."
+  [{:keys [mode load-fn params cid-fn address?] :or {address? true}}]
   (let [result (try
                  {:ok true :data (load-fn (or params {}))}
                  (catch :default e
                    {:ok false :reason :load-failed
                     :error (or (ex-message e) (str e))}))]
-    (if (:ok result)
+    (cond
+      (not (:ok result)) result
+      (not address?) (assoc result :mode (or mode :build))
+      :else
       (let [t (text (:data result))]
         (assoc result
                :data-cid (cid-fn t)
                :text t
-               :mode (or mode :build)))
-      result)))
+               :mode (or mode :build))))))
 
 (defn document-with-data
   "Attach a data station to a document manifest: the returned map carries

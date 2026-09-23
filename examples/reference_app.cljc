@@ -38,7 +38,7 @@
 
 ;; ── identity: real CIDs ───────────────────────────────────────────────────
 
-(defn cid-fn [text] (ca/cid-string (d/sha256 (d/->octets (str text)))))
+(defn cid-fn [text] (ca/cid-string (d/sha256 (str text))))
 
 ;; ── the app's declaration and step ───────────────────────────────────────
 
@@ -65,14 +65,14 @@
 
 ;; ── documents ─────────────────────────────────────────────────────────────
 
-(def ^:private head
+(def head
   (str "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
        "<title>shinkansen reference</title>"
        "<style>body{font-family:system-ui;margin:0;padding:16px;max-width:40rem}"
        "@media (max-width:480px){body{padding:8px}}pre{overflow-x:auto}</style></head><body>"))
 
-(defn- esc [s] (-> (str s) (str/replace "&" "&amp;") (str/replace "<" "&lt;")))
+(defn esc [s] (-> (str s) (str/replace "&" "&amp;") (str/replace "<" "&lt;")))
 
 (def home-html
   (str head
