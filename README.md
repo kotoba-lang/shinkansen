@@ -94,25 +94,30 @@ counts — and its test pins that every namespace it names exists.
 
 ## Performance (bench/, measured 2026-09-23)
 
-Server CPU per response (µs, median of 3 interleaved rounds; lower is better —
-[`bench/README.md`](bench/README.md) says why this, not req/s, is the ranking
-number on a shared machine). Apple M4, node 26.7.0, load average ~180 during
-the run; `bench/results/2026-09-23.edn` has req/s and p99 too.
+Server CPU per response (µs, median of 3 interleaved rounds after a 2 s
+warm-up; lower is better — [`bench/README.md`](bench/README.md) says why this,
+not req/s, is the ranking number on a shared machine, and how Next.js / Nuxt
+serve the same bytes). Apple M4, node 26.7.0, load average ~150 during the run;
+`bench/results/2026-09-23-meta.edn` has req/s and p99 too.
 
-| scenario | shinkansen | node:http | fastify | hono | express |
-|---|---|---|---|---|---|
-| `static` (11.6 KB :ssg page) | **41.7** | 45.3 | 65.1 | 61.6 | 75.2 |
-| `304` (If-None-Match = CID) | **30.3** | 31.6 | 34.6 | 35.2 | 42.5 |
-| `ssr` (params + data, cache hit) | 42.3 | **39.0** | 41.2 | 43.4 | 63.4 |
-| `ssr-miss` (data changes every request) | 549.4 | 53.3 | **51.3** | 56.7 | 74.6 |
+| scenario | shinkansen | node:http | fastify | hono | express | Next.js 16 | Nuxt 4 |
+|---|---|---|---|---|---|---|---|
+| `static` (11.6 KB page) | **36.2** | 43.1 | 46.5 | 63.5 | 67.4 | 1,035.6 | 205.0 |
+| `304` (If-None-Match) | **30.0** | 30.8 | 31.2 | 34.8 | 44.2 | 686.2 | 45.2 |
+| `ssr` (params + data, cache hit) | 39.7 | 39.1 | **38.2** | 45.6 | 66.3 | 1,030.8 | 60.8 |
+| `ssr-miss` (data changes every request) | 488.2 | **50.3** | 50.4 | 59.4 | 74.4 | 792.1 | 73.6 |
 
-The first three come from content addressing: an answered URL is a value, so
-`shinkansen.serve` answers a repeat from a per-URL table of pre-encoded bytes
-(:ssr only after its load answers `=` data). `ssr` is within the run-to-run
-spread of node:http / fastify (an earlier run measured 36.3 vs 40.0 / 39.8).
-`ssr-miss` is ~10× worse: the app's render and CID encoding run interpreted
-under kbb/sci while the others run V8-JIT'd JS. Closing that needs an AOT
-build, which does not exist yet.
+- Against the meta-frameworks shinkansen is cheaper on every cacheable path:
+  static 5.7× under Nuxt and 29× under Next.js, 304 1.5× / 23×, ssr 1.5× / 26×.
+  On `ssr-miss` it beats Next.js (488 vs 792) and loses to Nuxt (74).
+- Against the plain servers it is lowest on `static` and `304` and within the
+  run-to-run spread on `ssr`. On `ssr-miss` it is ~10× worse: the app's
+  render and CID encoding run interpreted under kbb/sci while the others run
+  V8-JIT'd JS. Closing that needs an AOT build, which does not exist yet.
+
+The cacheable wins come from content addressing: an answered URL is a value,
+so `shinkansen.serve` answers a repeat from a per-URL table of pre-encoded
+bytes (:ssr only after its load answers `=` data).
 
 ## Test
 
