@@ -156,3 +156,14 @@
       (is (nil? (::host/plan (get* (ctx {:documents docs}) "/items"))) ":memo? false opts out"))
     (is (nil? (::host/plan (get* (ctx {:documents {}}) "/"))) "500")
     (is (nil? (::host/plan (get* (ctx) "/nope"))) "404")))
+
+(deftest a-swapped-tree-never-answers-from-the-previous-trees-routes
+  ;; host remembers resolve-path per (identical tree, path)
+  (let [docs {:a {:html "<p>A</p>" :mode :ssg} :b {:html "<p>B</p>" :mode :ssg}}
+        c1 {:tree {:path "/" :document :a} :documents docs}
+        c2 {:tree {:path "/" :document :b} :documents docs}]
+    (is (= "<p>A</p>" (:body (get* c1 "/"))))
+    (is (= "<p>A</p>" (:body (get* c1 "/"))) "the same tree, remembered")
+    (is (= "<p>B</p>" (:body (get* c2 "/"))) "a new tree resolves anew")
+    (is (= 404 (:status (get* c2 "/x"))))
+    (is (= "<p>A</p>" (:body (get* c1 "/"))) "and back")))

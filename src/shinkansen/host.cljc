@@ -236,7 +236,7 @@
                 (cond-> resp
                   (and cid (= 200 status) (not (false? (:memo? doc))))
                   (assoc ::plan (response-plan {:mode (:mode r) :doc doc :params params :loaded loaded
-                                                :response (html-response 200 html opts)
+                                                :response (if (= 200 (:status resp)) resp (html-response 200 html opts))
                                                 :etag (etag-of cid)})))))))))))
 
 ;; ── invoke ────────────────────────────────────────────────────────────────
@@ -322,6 +322,24 @@
 
 ;; ── the entry ─────────────────────────────────────────────────────────────
 
+(def ^:private route-memo
+  "routes/resolve-path is a pure function of (tree, path) and the tree of a
+   ctx does not change, so the answer for a path is remembered while the
+   tree is the IDENTICAL value (a swapped ctx carries a new tree and starts
+   over). Bounded: past 4096 paths it starts over too. Measured 2026-09-23:
+   36 us of interpreted walk per request under kbb/sci, on every miss."
+  (atom {:tree nil :paths {}}))
+
+(defn- resolve-route [tree path]
+  (let [{t :tree ps :paths} @route-memo]
+    (or (when (identical? t tree) (get ps path))
+        (let [r (routes/resolve-path tree path)]
+          (swap! route-memo (fn [{t :tree ps :paths}]
+                              (if (and (identical? t tree) (< (count ps) 4096))
+                                {:tree tree :paths (assoc ps path r)}
+                                {:tree tree :paths {path r}})))
+          r))))
+
 (defn handle
   "One request → one response, as data.
      req: {:method \"GET\"|\"POST\"|… :url \"/path?q\" :headers {…} :body <parsed JSON or nil>}
@@ -344,7 +362,7 @@
       {:status 405 :headers {"allow" "GET, HEAD"} :body ""}
 
       :else
-      (let [r (routes/resolve-path tree path)]
+      (let [r (resolve-route tree path)]
         (if-not (:ok r)
           (html-response 404 (:html (error-document {:path path :reason (:reason r)
                                                      :detail (str "deepest matched: " (pr-str (:deepest r)))

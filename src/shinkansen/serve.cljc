@@ -44,6 +44,13 @@
 (defn- headers->clj [^js req]
   (js->clj (.-headers req)))
 
+(defn- get-headers
+  "The headers a GET/HEAD document answer reads: If-None-Match, and nothing
+   else (principal and grant are read on POST <invoke-path> only). Converting
+   every header to Clojure cost ~8-11 us per request under kbb/sci."
+  [^js req]
+  (if-let [v (aget (.-headers req) "if-none-match")] {"if-none-match" v} {}))
+
 (defn- write-response [^js res {:keys [status headers body]}]
   (.writeHead res status (clj->js headers))
   (.end res (str body)))
@@ -182,7 +189,7 @@
                       ;; GET/HEAD carry no body the host reads: answer now
                       get?
                       (try (respond! res url (host/handle {:method method :url url
-                                                           :headers (headers->clj req) :body nil}
+                                                           :headers (get-headers req) :body nil}
                                                           @current))
                            (catch :default e (threw res e)))
 

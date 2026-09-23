@@ -69,6 +69,33 @@
 (defn- fmt-int [x] (.toLocaleString (js/Math.round x) "en-US"))
 (defn- fmt-x [x] (if (< (js/Math.abs (- x 1)) 0.005) "1.0×" (str (.toFixed x (if (< x 10) 1 0)) "×")))
 
+;; ── facts the prose states, computed (never typed) ─────────────────────────
+
+(defn- facts [{:keys [medians load]}]
+  (let [cpu (fn [fw sc] (:cpu-us (cell medians fw sc)))
+        ratio (fn [a b] (when (and a b) (/ a b)))
+        la (:loadavg load)]
+    {:miss-vs-node (ratio (cpu "shinkansen" "ssr-miss") (cpu "node-http" "ssr-miss"))
+     :miss-vs-next (ratio (cpu "nextjs" "ssr-miss") (cpu "shinkansen" "ssr-miss"))
+     :loadavg (when (seq la) (.toFixed (first la) 0))}))
+
+(defn- honest-lines [r]
+  (let [{:keys [miss-vs-node miss-vs-next loadavg]} (facts r)]
+    [(str "Already-answered URLs come from a table of pre-encoded bytes: the ETag is the CID of those bytes, "
+          "so the answer is a value. That is where the static and 304 numbers come from.")
+     (str "When the data changes on every request, shinkansen costs " (fmt-x miss-vs-node)
+          " the CPU of plain node:http: the app's render and the CID encoding run interpreted (kbb/sci), "
+          "the others run V8-JIT'd JavaScript."
+          (when miss-vs-next
+            (if (> miss-vs-next 1)
+              (str " Next.js costs " (fmt-x miss-vs-next) " of shinkansen there.")
+              (str " Next.js is below it there (" (fmt-x (/ 1 miss-vs-next)) ")."))))
+     (str "Next.js and Nuxt serve the same bytes through Route Handlers and Nitro server routes, each with its best "
+          "documented static option. Next.js's force-static route ignores If-None-Match, so its 304 runs on a dynamic handler.")
+     (str "The machine was shared"
+          (if loadavg (str " (1-minute load average " loadavg " when the run finished)") "")
+          ". CPU per response holds up under that; requests per second does not.")]))
+
 ;; ── markdown ──────────────────────────────────────────────────────────────
 
 (defn- md [{:keys [measured-at machine load] :as r} version-of source]
@@ -108,13 +135,8 @@
                  (str "- " label " " (if pkg (version-of pkg) (if (= label "shinkansen") "(this commit)" (:node machine)))
                       (when note (str " — " note)) "\n")))
      "\n## Reading it honestly\n\n"
-     "- shinkansen answers a URL it has already answered from a table of pre-encoded bytes, because its ETag is the CID of those bytes. "
-     "That is why it is lowest on the static page and the 304, and within noise on SSR while the data is unchanged.\n"
-     "- When the data changes on every request it is roughly 10× the plain Node servers: the app's render and the CID encoding "
-     "run interpreted (kbb/sci) while the others run V8-JIT'd JavaScript. It is still below Next.js there.\n"
-     "- Next.js and Nuxt serve the same bytes through Route Handlers / Nitro server routes, with their best documented static option. "
-     "Next.js's force-static route ignores If-None-Match, so its 304 is measured on a dynamic handler.\n"
-     "- The machine was shared (load average 60–180 during these runs). CPU per response holds up under that; requests per second does not.\n\n"
+     (str/join (for [l (honest-lines r)] (str "- " l "\n")))
+     "\n"
      "Method, fixtures and how to re-run: [bench/README.md](https://github.com/kotoba-lang/shinkansen/blob/main/bench/README.md). "
      "Raw medians: [" source "](https://github.com/kotoba-lang/shinkansen/blob/main/" source ").\n")))
 
@@ -176,11 +198,7 @@
          " · " (:connections load) " connections · " (:duration load) " s × " (:rounds load) " rounds (median)"]]
        (for [s (rows r)] (scenario-table s))
        (dds/section {:title "Reading it honestly"}
-                    [:ul
-                     [:li "Already-answered URLs come from a table of pre-encoded bytes: the ETag is the CID of those bytes, so the answer is a value. That is the static and 304 lead."]
-                     [:li "When the data changes on every request, shinkansen is about 10× the plain Node servers — the app's render and the CID encoding run interpreted, the others run V8-JIT'd JavaScript. It is still below Next.js there."]
-                     [:li "Next.js and Nuxt serve the same bytes through Route Handlers and Nitro server routes, each with its best documented static option. Next.js's force-static route ignores If-None-Match, so its 304 runs on a dynamic handler."]
-                     [:li "The machine was shared (load average 60–180). CPU per response holds up under that; requests per second does not."]])
+                    (into [:ul] (for [l (honest-lines r)] [:li l])))
        (dds/section {:title "Versions"}
                     [:ul (for [{:keys [label pkg]} frameworks]
                            [:li label " " (if pkg (version-of pkg) (if (= label "shinkansen") "(this commit)" (:node machine)))])])
