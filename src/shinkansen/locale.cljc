@@ -18,7 +18,7 @@
 
   Pure .cljc, no js/ (dual-render per shitsuke). Fail-closed: a cookie
   value outside :supported is never trusted."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.publish :as publish]))
 
 (def ^:const defaults
@@ -69,7 +69,7 @@
     (->> (str/split al #",")
          (map #(str/split % #";" 2))
          (keep (fn [[tag params]]
-                 (when-let [t (some-> tag str/trim str/lower-case not-empty)]
+                 (when-let [t (some-> tag str/trim str/lower not-empty)]
                    (let [q (if-let [m (and params (re-find #"q\s*=\s*([0-9.]+)" params))]
                              (parse-q (second m))
                              1.0)]
@@ -116,7 +116,7 @@
                        (when (contains? sup l) l)))
         header-hit (fn [t] (let [l (if normalize
                                      (normalize t)
-                                     (some (fn [l] (when (= (str/lower-case (locale-name l)) t) l)) supported))]
+                                     (some (fn [l] (when (= (str/lower (locale-name l)) t) l)) supported))]
                              (when (contains? sup l) l)))]
     (or (when-let [l (norm explicit)] {:locale l :source :explicit})
         (when-let [l (norm cookie-value)] {:locale l :source :cookie})

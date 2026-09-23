@@ -3,7 +3,7 @@
   that fails it WITH the reason literal pinned — a negative test that only
   asserts the score counts runs that failed for another reason."
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [shinkansen.audit :as audit]))
 
 (def head

@@ -8,7 +8,12 @@
  ;; hash function is injected into shinkansen.state; see jp-go-dds's deps.edn
  ;; for the same rule stated from the library side). If a real dependency on
  ;; them appears, declare it as :git/sha.
- :deps {org.clojure/clojure {:mvn/version "1.12.0"}}
+ :deps {
+        ;; kotoba.lang.text, not clojure.string. Pinned as an explicit floor:
+        ;; tools.deps takes the NEWEST sha it is shown, so without a floor here
+        ;; this repo silently rides whatever a sibling happens to name.
+        io.github.kotoba-lang/text {:git/sha "3dcb2ab087933dc7b703b340dac9afce62cb30ff"}
+       org.clojure/clojure {:mvn/version "1.12.0"}}
  :aliases
  {:test {:extra-paths ["test"]
          :main-opts ["-m" "shinkansen.test-runner"]}}}

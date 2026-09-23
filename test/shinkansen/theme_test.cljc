@@ -3,7 +3,7 @@
   attribute says, what `system` means, and that the audit treats the
   framework's own actions as declared."
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [shinkansen.theme :as theme]
             [shinkansen.locale :as locale]
             [shinkansen.interaction :as i]

@@ -23,7 +23,7 @@
   Pure .cljc. The matcher does not touch the network; the host owns
   fetch/publish. Fail-closed: an unresolvable path returns
   {:ok false :reason ...} with the deepest matched segment named."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (defn- segmentize
   "Split a request path into segments: /apps/security → [apps security].

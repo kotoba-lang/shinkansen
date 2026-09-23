@@ -12,7 +12,7 @@
   that fetches its own assets from the CDN cannot claim a CID and this
   namespace refuses to manifest one — that refusal is the whole point of
   the :document contract."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.viewport :as viewport]))
 
 (def ^:const bytes-planes

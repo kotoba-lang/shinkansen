@@ -108,7 +108,7 @@
   only: it verifies contract MARKERS in the emitted document, not pixels.
   Visibility is structural (hidden= attribute, closed <details>) — what a
   browser hides by default the idle-state axes do not count."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.interaction :as interaction]
             [shinkansen.viewport :as viewport]
             [shinkansen.live :as live]))
@@ -143,7 +143,7 @@
 (defn- parse-attrs [s]
   (into {}
         (map (fn [[_ k v1 v2 v3]]
-               [(str/lower-case k) (or v1 v2 v3 "")]))
+               [(str/lower k) (or v1 v2 v3 "")]))
         (re-seq #"([a-zA-Z_:][\w:.-]*)(?:\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s\"'>]+)))?" s)))
 
 (defn- decode-entities [s]
@@ -171,7 +171,7 @@
                        i (+ pos (str/index-of (subs src pos) whole))
                        j (+ i (count whole))]
                    (recur j (conj acc {:i i :j j :close? (= close? "/")
-                                       :tag (str/lower-case tag)
+                                       :tag (str/lower tag)
                                        :attrs (parse-attrs attrs)
                                        :self? (= self? "/")})))
                  acc))]

@@ -62,7 +62,7 @@
   isolated, not proof of who is asking (SPEC §1.5).
 
   Pure .cljc. Nothing here touches the network or the store."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.actions :as actions]
             [shinkansen.interaction :as interaction]
             [shinkansen.load :as load]))

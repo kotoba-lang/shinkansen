@@ -2,7 +2,7 @@
   "The loop is deterministic: same audit → same ranking, same batch, same
   document. Convergence is refused while anything is unmeasured."
   (:require [clojure.test :refer [deftest is]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [shinkansen.audit :as audit]
             [shinkansen.audit-test :as fixtures]
             [shinkansen.coscientist :as cosci]))

@@ -67,7 +67,7 @@
 
   Pure .cljc: the contract functions take and return data; `runtime` is a
   string. No js/ in this namespace."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.theme :as theme]
             [shinkansen.locale :as locale]
             [shinkansen.live :as live]))

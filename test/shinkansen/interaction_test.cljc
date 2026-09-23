@@ -5,7 +5,7 @@
   contract half is pinned so a change to the vocabulary cannot land
   silently."
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [shinkansen.interaction :as i]
             [shinkansen.audit :as audit]))
 

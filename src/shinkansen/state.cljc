@@ -24,7 +24,7 @@
   Nothing here writes to a store: the caller (Worker, browser host, test)
   owns persistence. This namespace is pure modulo hashing."
   (:require [clojure.edn :as edn]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (def ^:const genesis-prev nil)
 

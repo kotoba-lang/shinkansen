@@ -29,7 +29,7 @@
   three-state switcher agree on the choice.
 
   Pure .cljc; the two scripts are strings."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def modes [:light :dark :system])
 (def storage-key "kotoba-theme")
@@ -44,7 +44,7 @@
 (defn normalize
   "\"dark\" / :dark / \" DARK \" → :dark; anything else → nil (never a guess)."
   [v]
-  (let [s (some-> v (cond-> (keyword? v) name) str str/trim str/lower-case not-empty)]
+  (let [s (some-> v (cond-> (keyword? v) name) str str/trim str/lower not-empty)]
     (when (and s (mode? s)) (keyword s))))
 
 (defn resolve

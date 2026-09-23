@@ -23,7 +23,7 @@
 
   Run programmatically: (start {:ctx … :port 0 :watch [\"src\"] :rebuild-fn f})
   → a promise of {:server :port :stop :swap!}."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.host :as host]
             ["node:http" :as http]
             ["node:fs" :as fs]))
