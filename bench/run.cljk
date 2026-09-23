@@ -37,6 +37,7 @@
   (:require [clojure.string :as str]
             ["node:child_process" :as cp]
             ["node:fs" :as fs]
+            ["node:net" :as net]
             ["node:os" :as os]
             ["node:path" :as path]))
 
@@ -46,6 +47,7 @@
 (def duration (env-int "DURATION" 5))
 (def workers (env-int "WORKERS" 4))
 (def rounds (env-int "ROUNDS" 3))
+(def warmup (env-int "WARMUP" 2))
 
 (def bench-dir (path/resolve "bench"))
 (def fixture (path/join bench-dir "results" "fixture.json.tmp"))
@@ -60,12 +62,33 @@
                    (str k "/content-address/src") (str k "/org-biscuitsec/src")
                    (str k "/org-biscuitsec/test") (str k "/authority/src") (str k "/text/src")])))
 
+(def next-bin (path/join bench-dir "node_modules" "next" "dist" "bin" "next"))
+(def nuxt-bin (path/join bench-dir "node_modules" "nuxt" "bin" "nuxt.mjs"))
+
 (def frameworks
   [{:name "shinkansen" :cmd "kbb" :args ["--backend" "sci" "--classpath" classpath "bench/shinkansen_server.cljk"]}
    {:name "node-http" :cmd "node" :args ["bench/competitors/node-http.js"]}
    {:name "fastify" :cmd "node" :args ["bench/competitors/fastify.js"]}
    {:name "hono" :cmd "node" :args ["bench/competitors/hono.js"]}
-   {:name "express" :cmd "node" :args ["bench/competitors/express.js"]}])
+   {:name "express" :cmd "node" :args ["bench/competitors/express.js"]}
+   ;; `next start` (production server) over `next build` output: Route
+   ;; Handlers, since a page would not answer the fixture's bytes. Next picks
+   ;; no port 0 and prints no PORT line, so the harness hands it a free port
+   ;; and waits until it answers HTTP.
+   {:name "nextjs" :cmd "node"
+    :args [next-bin "start" "bench/competitors/nextjs" "-H" "127.0.0.1" "-p" :port]
+    ;; a force-static route ignores If-None-Match (200 + body), so Next's
+    ;; 304 is measured on a dynamic handler that checks it by hand
+    :paths {"304" "/revalidate"}
+    :build {:args [next-bin "build" "bench/competitors/nextjs"]
+            :unless "bench/competitors/nextjs/.next/BUILD_ID"}
+    :ready :http}
+   ;; Nuxt 4 production output (Nitro). `/` is prerendered and answered by
+   ;; Nitro's static handler (its own ETag + 304); the rest are server routes.
+   {:name "nuxt" :cmd "node" :args ["bench/competitors/nuxt/.output/server/index.mjs"]
+    :build {:args [nuxt-bin "build" "bench/competitors/nuxt"]
+            :unless "bench/competitors/nuxt/.output/server/index.mjs"}
+    :ready :http}])
 
 (def scenarios
   [{:name "static" :path "/" :expect 200}
@@ -73,31 +96,71 @@
    {:name "ssr" :path "/todos/t3" :expect 200}
    {:name "ssr-miss" :path "/live" :expect 200}])
 
-(defn- start! [{:keys [name cmd args]}]
+(defn- free-port []
   (js/Promise.
    (fn [resolve reject]
-     (let [child (cp/spawn cmd (clj->js args)
+     (let [srv (net/createServer)]
+       (.on srv "error" reject)
+       (.listen srv 0 "127.0.0.1"
+                (fn [] (let [p (.-port (.address srv))] (.close srv (fn [] (resolve p))))))))))
+
+(defn- answers-http? [port]
+  (-> (js/fetch (str "http://127.0.0.1:" port "/")) (.then (fn [r] (.text r) true)) (.catch (fn [_] false))))
+
+(defn- build! [{:keys [name build]}]
+  (if (or (nil? build) (fs/existsSync (:unless build)))
+    (js/Promise.resolve nil)
+    (js/Promise.
+     (fn [resolve reject]
+       (println (str "BUILD\t" name))
+       ;; FIXTURE is set: a static route is prerendered from it at build time
+       (cp/execFile "node" (clj->js (:args build))
+                    #js {:maxBuffer (* 64 1024 1024)
+                         :env (js/Object.assign #js {} env #js {:FIXTURE fixture})}
+                    (fn [e _ stderr] (if e (reject (str name ": build failed: " stderr)) (resolve nil))))))))
+
+(defn- spawn! [{:keys [name cmd args ready]} port]
+  (js/Promise.
+   (fn [resolve reject]
+     (let [child (cp/spawn cmd (clj->js (mapv #(if (= :port %) (str port) %) args))
                            #js {:env (js/Object.assign #js {} env
-                                                       #js {:PORT "0" :FIXTURE fixture
+                                                       #js {:PORT (str (or port 0)) :FIXTURE fixture
                                                             :NODE_PATH (path/join bench-dir "node_modules")})
                                 :stdio #js ["ignore" "pipe" "pipe"]
+                                ;; own process group: CPU is summed and the kill
+                                ;; reaches every worker a server spawns
                                 :detached true})
            out (atom "")
            err (atom "")
+           done (atom false)
            exited (js/Promise. (fn [r] (.on child "exit" r)))
-           timer (js/setTimeout #(do (.kill child) (reject (str name ": no PORT within 60 s; stderr: " @err))) 60000)]
+           ok! (fn [p] (when-not @done (reset! done true) (resolve {:child child :exited exited :port p})))
+           timer (js/setTimeout #(do (js/process.kill (- (.-pid child)) "SIGKILL")
+                                     (reject (str name ": not listening within 60 s; stderr: " @err))) 60000)]
        (.on (.-stderr child) "data" #(swap! err str %))
        (.on (.-stdout child) "data"
             (fn [d]
               (swap! out str d)
-              (when-let [[_ p] (re-find #"PORT\t(\d+)" @out)]
+              (when-let [[_ p] (and (not= ready :http) (re-find #"PORT\t(\d+)" @out))]
                 (js/clearTimeout timer)
-                (resolve {:child child :exited exited :port (js/parseInt p)}))))
-       ;; a reject after the resolve above is a no-op: this only speaks before PORT
-       (.on child "exit" (fn [c] (reject (str name ": exited " c " before PORT; stderr: " @err))))))))
+                (ok! (js/parseInt p)))))
+       (when (= ready :http)
+         (let [poll (fn poll []
+                      (when-not @done
+                        (.then (answers-http? port)
+                               (fn [up?] (if up? (do (js/clearTimeout timer) (ok! port)) (js/setTimeout poll 200))))))]
+           (poll)))
+       ;; a reject after the resolve above is a no-op: this only speaks before ready
+       (.on child "exit" (fn [c] (reset! done true) (reject (str name ": exited " c " before ready; stderr: " @err))))))))
+
+(defn- start! [fw]
+  (-> (build! fw)
+      (.then (fn [_] (if (= :http (:ready fw)) (free-port) nil)))
+      (.then (fn [port] (spawn! fw port)))))
 
 (defn- stop! [{:keys [child exited]}]
-  (when (nil? (.-exitCode child)) (.kill child))
+  (when (nil? (.-exitCode child))
+    (try (js/process.kill (- (.-pid child)) "SIGTERM") (catch :default _ (.kill child))))
   exited)
 
 (defn- cpu-seconds
@@ -117,11 +180,11 @@
   (-> (js/fetch (str "http://127.0.0.1:" port "/"))
       (.then (fn [r] (.then (.text r) (fn [t] {:etag (.get (.-headers r) "etag") :body t}))))))
 
-(defn- load! [port pgid {:keys [path conditional?]} etag]
+(defn- load! [port pgid {:keys [path conditional? seconds]} etag]
   (js/Promise.
    (fn [resolve]
      (let [cpu0 (cpu-seconds pgid)]
-     (let [args (cond-> ["-c" (str connections) "-d" (str duration) "-w" (str workers) "-j"]
+     (let [args (cond-> ["-c" (str connections) "-d" (str (or seconds duration)) "-w" (str workers) "-j"]
                   conditional? (into ["-H" (str "if-none-match=" etag)])
                   true (conj (str "http://127.0.0.1:" port path)))]
        (cp/execFile autocannon (clj->js args) #js {:maxBuffer (* 64 1024 1024)}
@@ -148,6 +211,16 @@
 
 (defn- chain [xs f] (reduce (fn [p x] (.then p (fn [acc] (.then (f x) #(conj acc %))))) (js/Promise.resolve []) xs))
 
+(defn- run-scenario [fw srv etag sc0]
+  (let [sc (assoc sc0 :path (get (:paths fw) (:name sc0) (:path sc0)))
+        port (:port srv)
+        pgid (.-pid (:child srv))]
+    ;; unmeasured warm-up on the same path: a JIT, a lazy module load or a
+    ;; cache fill is not the steady cost
+    (-> (if (pos? warmup) (load! port pgid (assoc sc :seconds warmup) etag) (js/Promise.resolve nil))
+        (.then (fn [_] (load! port pgid sc etag)))
+        (.then (fn [r] (merge {:fw (:name fw) :scenario (:name sc)} (judge r sc)))))))
+
 (defn- run-framework [fw home]
   (-> (start! fw)
       (.then (fn [srv]
@@ -155,9 +228,7 @@
                    (.then (fn [{:keys [etag body]}]
                             (when-not (= body home)
                               (throw (js/Error. (str (:name fw) ": / does not answer the fixture bytes"))))
-                            (chain scenarios
-                                   (fn [sc] (.then (load! (:port srv) (.-pid (:child srv)) sc etag)
-                                                   (fn [r] (merge {:fw (:name fw) :scenario (:name sc)} (judge r sc))))))))
+                            (chain scenarios #(run-scenario fw srv etag %))))
                    (.finally #(stop! srv)))))))
 
 (defn- median-of [runs]

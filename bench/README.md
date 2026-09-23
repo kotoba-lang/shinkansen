@@ -5,12 +5,19 @@ drives it with autocannon, and refuses a run in which any response carried
 the wrong status (a fast wrong answer is not a result).
 
 ```bash
-npm i --prefix bench                      # pinned: express 5.2.1, fastify 5.12.5,
-                                          # hono 4.13.8 + @hono/node-server 2.1.1, autocannon 8.0.0
+npm i --prefix bench                      # pinned: express 5.2.1, fastify 5.12.5, hono 4.13.8
+                                          # + @hono/node-server 2.1.1, next 16.3.6 + react 19.3.0,
+                                          # nuxt 4.5.2, autocannon 8.0.0
 KOTOBA_LANG=<superproject>/orgs/kotoba-lang \
   kbb --backend sci bench/run.cljk        # ROUNDS=3 DURATION=5 CONNECTIONS=100 WORKERS=4
-                                          # ONLY=shinkansen,fastify  OUT=bench/results/<date>.edn
+                                          # WARMUP=2 (unmeasured seconds per scenario)
+                                          # ONLY=shinkansen,nextjs  OUT=bench/results/<date>.edn
 ```
+
+Next.js and Nuxt are built by the harness on first use (`next build` /
+`nuxt build`, skipped while their output exists — delete `.next/` or
+`.output/` after changing a fixture), then run as production servers
+(`next start`, `node .output/server/index.mjs`) on a port the harness picks.
 
 Exit 0 only when every median is valid; 1 on any INVALID; 2 when a server
 did not start. Output: `RESULT fw scenario rps p99ms cpu-us OK|INVALID`.
@@ -23,6 +30,20 @@ did not start. Output: `RESULT fw scenario rps p99ms cpu-us OK|INVALID`.
 | `304` | `GET /` + `If-None-Match: <etag>` | revalidation — the common case for a name host (`Cache-Control: no-cache`) |
 | `ssr` | `GET /todos/t3` | a page rendered from path params + loaded data |
 | `ssr-miss` | `GET /live` | data changes on **every** request, so nothing may be answered from memory: load + render + ETag per request. shinkansen's worst case, on purpose |
+
+## Meta-frameworks: how Next.js and Nuxt serve the same bytes
+
+A page component would not answer the fixture's bytes (the byte check at
+start refuses that), so both serve through their documented raw-response
+routes, and each gets its best documented option for a static page:
+
+| | `static` | `304` | `ssr` / `ssr-miss` |
+|---|---|---|---|
+| Next.js 16 | App Router Route Handler, `dynamic = 'force-static'`: prerendered at build, answered from Next's cache (`x-nextjs-cache: HIT`) | **a separate dynamic handler (`/revalidate`)**: the force-static route ignores If-None-Match and answers 200 + body (measured) | `force-dynamic` Route Handlers |
+| Nuxt 4 | `nitro.prerender` → `.output/public/index.html`, served by Nitro's static handler | the same handler, its own ETag → 304 | Nitro server routes (`server/routes/`) |
+
+Next.js's numbers were the least stable here: `force-static` measured 714 and
+2,513 µs/response in two single runs an hour apart. Trust the median.
 
 ## Two numbers, and which one to rank by
 
