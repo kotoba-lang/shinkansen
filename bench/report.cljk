@@ -90,6 +90,9 @@
             (if (> miss-vs-next 1)
               (str " Next.js costs " (fmt-x miss-vs-next) " of shinkansen there.")
               (str " Next.js is below it there (" (fmt-x (/ 1 miss-vs-next)) ")."))))
+     (str "Compiling that render instead (.kotoba, amu --target js) is not a way out yet: it measured ~50× slower "
+          "than the interpreted .cljc, because the emitted runtime re-validates every value on every operation "
+          "(kotoba-lang/kotoba-script#103). See bench/README.md.")
      (str "Next.js and Nuxt serve the same bytes through Route Handlers and Nitro server routes, each with its best "
           "documented static option. Next.js's force-static route ignores If-None-Match, so its 304 runs on a dynamic handler.")
      (str "The machine was shared"

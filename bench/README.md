@@ -86,11 +86,41 @@ enters the interpreter.
 
 ## What is still slower, and why
 
-`ssr-miss` is roughly 10× the CPU per response of the others. On a miss the
-app's own render fn and the CID encoding run **interpreted under kbb/sci**,
-while every competitor runs as V8-JIT'd JS. The fix there is not in the
-framework: an AOT (compiled ClojureScript / Kotoba) build of the app and
-`content-address`. That path does not exist for shinkansen yet.
+On `ssr-miss` (data changes every request) no framework may answer from
+memory, and shinkansen still costs several times the JIT'd frameworks. The
+split, measured 2026-09-23 inside the running server (a probe timing the
+listener, the station check, `host/handle`, the station build) and by CPU time
+per piece:
+
+| part | µs / miss | whose |
+|---|---:|---|
+| the app's render fn (20 rows, `.cljc`) | ~70–110 | the app, interpreted by kbb/sci |
+| CID: sha2-256 (native) + base32 (interpreted) | ~12 + ~36 | content-address |
+| the rest of `host/handle` (load, render check, headers, plan) | ~100 | shinkansen, interpreted |
+| station build + write (flat headers, Buffer) | ~40 | shinkansen, interpreted |
+| Node's HTTP parse and write | ~45 | Node (every framework pays it) |
+
+Already taken out of this path: a second run of the load per request (the
+station check hands its value to the host), a clj->js of every response,
+the route walk (remembered per identical tree), the whole-header conversion.
+
+### The compiled path, measured: not yet
+
+The obvious next lever is to stop interpreting the render: write it in
+`.kotoba` and compile it with amu. Measured with the `/live` render written
+in `.kotoba` (`amu compile --target js --jvm-free`, same output bytes):
+
+| | µs / call |
+|---|---:|
+| `.cljc` render under kbb/sci | ~110 |
+| `.kotoba` render, `--target js` | **~5,600** |
+
+The emitted runtime re-validates a value on every operation (a full UTF-8
+scan per string argument, a whole-string `TextEncoder` per substring, an
+O(size) document access), so building a string or walking a document is
+O(n²). Reported upstream with the numbers and a repro:
+[kotoba-lang/kotoba-script#103](https://github.com/kotoba-lang/kotoba-script/issues/103).
+Until that lands the compiled path is the slowest option, not the fastest.
 
 ## Competitor fixtures are JS on purpose
 
