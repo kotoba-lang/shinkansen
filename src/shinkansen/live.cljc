@@ -52,7 +52,7 @@
 
   Pure .cljc: data in, data out; `runtime-fragment` is a JS string the
   interaction runtime includes."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 ;; --- frames ------------------------------------------------------------------
 

@@ -7,7 +7,7 @@
   Node-side IO; the tool logic itself stays in shinkansen.mcp (pure).
 
   Run:  nbb -m shinkansen.stdio"
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.mcp :as mcp]))
 
 (def base-url (or (.-SHINKANSEN_LAKE_URL js/process.env)

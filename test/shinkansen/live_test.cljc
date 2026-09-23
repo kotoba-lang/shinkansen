@@ -5,7 +5,7 @@
   executed in Node by scripts/runtime-node-check.cljk (node identity
   across frames, order, removal, the select rebuild)."
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [shinkansen.live :as live]
             [shinkansen.audit :as audit]
             [shinkansen.interaction :as interaction]))

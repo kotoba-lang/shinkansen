@@ -29,7 +29,7 @@
             [biscuit.kotoba :as bk]
             [biscuit.token :as bt]
             [cljs.reader :as edn]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [content-address.core :as ca]
             [content-address.digest :as d]
             [shinkansen.host :as host]

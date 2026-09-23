@@ -34,7 +34,7 @@
   is refused :validation-failed with the field errors attached.
 
   Pure .cljc. No IO, no DOM."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def ^:const default-messages
   {:required "必須です"

@@ -1,6 +1,6 @@
 (ns shinkansen.mcp-test
   (:require [clojure.test :refer [deftest is]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [shinkansen.mcp :as mcp]))
 
 (def ^:private base "https://yataverse.com")

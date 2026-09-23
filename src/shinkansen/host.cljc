@@ -45,7 +45,7 @@
     :dev?          inject the live-reload listener (dev bytes ≠ published bytes)
 
   Pure .cljc. No IO here."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.dev :as dev]
             [shinkansen.interaction :as interaction]
             [shinkansen.invoke :as invoke]
@@ -102,7 +102,7 @@
     [path params]))
 
 (defn- header [headers k]
-  (some (fn [[hk hv]] (when (= (str/lower-case (kw-name hk)) k) hv)) headers))
+  (some (fn [[hk hv]] (when (= (str/lower (kw-name hk)) k) hv)) headers))
 
 (defn default-grant-fn
   "`Authorization: Bearer <opaque>` → the opaque string. What the string IS
@@ -111,7 +111,7 @@
   [headers]
   (when-let [a (header headers "authorization")]
     (let [[scheme v] (str/split (str a) #"\s+" 2)]
-      (when (and v (= "bearer" (str/lower-case scheme)))
+      (when (and v (= "bearer" (str/lower scheme)))
         v))))
 
 ;; ── documents ─────────────────────────────────────────────────────────────
@@ -360,7 +360,7 @@
   condition under which it may answer from memory."
   [{:keys [method url headers] :as req} {:keys [tree invoke-path dev? cid-fn] :as ctx}]
   (let [[path query] (split-url url)
-        method (str/upper-case (str method))
+        method (str/upper (str method))
         invoke-path (or invoke-path "/invoke")]
     (cond
       (= path invoke-path)

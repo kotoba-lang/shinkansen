@@ -23,7 +23,7 @@
 
   Every tool answers {:ok bool …} and NEVER throws: an MCP tool result
   that throws surfaces as a protocol error, not a tool error."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.invoke :as invoke]))
 
 (def ^:const protocol-version "2025-06-18")

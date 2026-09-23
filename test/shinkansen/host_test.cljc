@@ -3,7 +3,7 @@
   every branch named. The running server is scripts/host-node-check.cljk;
   this pins what the transport hands it."
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [shinkansen.host :as host]))
 
 (def ^:private cid "bafkreia2cc444k5yrw57uhszfrvbri7wee3ljbpb5wfcorykk72kgxhjaq")

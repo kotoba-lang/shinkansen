@@ -1,6 +1,6 @@
 (ns shinkansen.locale-test
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [shinkansen.locale :as locale]
             [shinkansen.publish :as publish]))
 
@@ -144,7 +144,7 @@
              (locale/negotiate (assoc base :hint :xx)))
           "an unsupported hint is ignored"))
     (testing ":normalize is the app's alias table, applied to cookie, header and switch"
-      (let [alias (fn [v] (get {"zh" :zh-Hans "zh-tw" :zh-Hans "ja-jp" :ja "ja" :ja "en" :en} (str/lower-case (str v))))]
+      (let [alias (fn [v] (get {"zh" :zh-Hans "zh-tw" :zh-Hans "ja-jp" :ja "ja" :ja "en" :en} (str/lower (str v))))]
         (is (= {:locale :zh-Hans :source :cookie}
                (locale/negotiate (assoc base :cookie-value "zh" :normalize alias))))
         (is (= {:locale :ja :source :accept-language}

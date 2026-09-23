@@ -19,7 +19,7 @@
 
   Pure .cljc, deterministic, no I/O: the caller renders documents, calls
   `kaizen-cycle`, and persists the iteration (append-only measurements)."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [shinkansen.audit :as audit]))
 
 ;; --- Generate: one grounded hypothesis per finding -----------------------
@@ -92,7 +92,7 @@
 
 (defn- title-case [k]
   (let [s (name k)]
-    (str (str/upper-case (subs s 0 1)) (subs s 1))))
+    (str (str/upper (subs s 0 1)) (subs s 1))))
 
 (defn generate
   "One hypothesis per aggregated finding (from `audit/audit` :findings),

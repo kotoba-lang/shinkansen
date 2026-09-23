@@ -1,7 +1,7 @@
 (ns shinkansen.dev-test
   "Dev loop contract: snapshot gates with the SAME audit as publish,
   errors become content, unchanged content costs nothing."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.lang.text] [clojure.test :refer [deftest is]]
             [shinkansen.dev :as dev]
             [shinkansen.viewport :as vp]))
 
@@ -42,6 +42,6 @@
   (let [a (dev/snapshot {:entries [{:path "/" :html good-html}]
                          :tree {:path "/"} :cid-fn cid-fn :audit-fn audit-fn})
         b (dev/snapshot {:entries [{:path "/" :html
-                                    (clojure.string/replace good-html "ok" "changed")}]
+                                    (kotoba.lang.text/replace good-html "ok" "changed")}]
                          :tree {:path "/"} :cid-fn cid-fn :audit-fn audit-fn})]
     (is (not (dev/same-content? (first (:documents a)) (first (:documents b)))))))

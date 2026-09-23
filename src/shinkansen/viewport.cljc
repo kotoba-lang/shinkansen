@@ -20,7 +20,7 @@
   Pure .cljc (dual-render per shitsuke). No js/. Static analysis only —
   this cannot verify real rendering; it verifies the CONTRACT markers the
   host renderer and the framework rely on."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def ^:const viewport-meta
   "The one viewport declaration a published document must carry. Width is
