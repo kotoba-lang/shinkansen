@@ -92,36 +92,21 @@ The host is the one place every contract is DRIVEN rather than declared
 product still has to pick up — declared vs driven, with measured consumer
 counts — and its test pins that every namespace it names exists.
 
-## Performance (bench/, measured 2026-09-23)
+## Performance
 
-Published: **<https://kotoba-lang.github.io/shinkansen/>** (and
-[`docs/bench.md`](docs/bench.md)) — both generated from the results file by
-`bench/report.cljk`, so they cannot drift from the run.
+**<https://kotoba-lang.github.io/shinkansen/>** — server CPU per response
+against node:http, Fastify, Hono, Express, Next.js and Nuxt on the same bytes
+(also as [`docs/bench.md`](docs/bench.md)). Both are generated from a results
+file by `bench/report.cljk`, so the numbers live in exactly one place and are
+not repeated here. How it is measured and how to re-run:
+[`bench/README.md`](bench/README.md).
 
-Server CPU per response (µs, median of 3 interleaved rounds after a 2 s
-warm-up; lower is better — [`bench/README.md`](bench/README.md) says why this,
-not req/s, is the ranking number on a shared machine, and how Next.js / Nuxt
-serve the same bytes). Apple M4, node 26.7.0, load average ~150 during the run;
-`bench/results/2026-09-23-meta.edn` has req/s and p99 too.
-
-| scenario | shinkansen | node:http | fastify | hono | express | Next.js 16 | Nuxt 4 |
-|---|---|---|---|---|---|---|---|
-| `static` (11.6 KB page) | **36.2** | 43.1 | 46.5 | 63.5 | 67.4 | 1,035.6 | 205.0 |
-| `304` (If-None-Match) | **30.0** | 30.8 | 31.2 | 34.8 | 44.2 | 686.2 | 45.2 |
-| `ssr` (params + data, cache hit) | 39.7 | 39.1 | **38.2** | 45.6 | 66.3 | 1,030.8 | 60.8 |
-| `ssr-miss` (data changes every request) | 488.2 | **50.3** | 50.4 | 59.4 | 74.4 | 792.1 | 73.6 |
-
-- Against the meta-frameworks shinkansen is cheaper on every cacheable path:
-  static 5.7× under Nuxt and 29× under Next.js, 304 1.5× / 23×, ssr 1.5× / 26×.
-  On `ssr-miss` it beats Next.js (488 vs 792) and loses to Nuxt (74).
-- Against the plain servers it is lowest on `static` and `304` and within the
-  run-to-run spread on `ssr`. On `ssr-miss` it is ~10× worse: the app's
-  render and CID encoding run interpreted under kbb/sci while the others run
-  V8-JIT'd JS. Closing that needs an AOT build, which does not exist yet.
-
-The cacheable wins come from content addressing: an answered URL is a value,
-so `shinkansen.serve` answers a repeat from a per-URL table of pre-encoded
-bytes (:ssr only after its load answers `=` data).
+Where the numbers come from: an answered document's ETag is the CID of its
+bytes, so `shinkansen.serve` answers a repeat URL from a per-URL table of
+pre-encoded bytes (:ssr only after its load answers `=` data). When the data
+changes on every request the app's render and the CID encoding run
+interpreted under kbb/sci, and that path costs several times the JIT'd
+frameworks; closing it needs a compiled build, which does not exist yet.
 
 ## Test
 
