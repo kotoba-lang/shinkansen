@@ -196,14 +196,14 @@
   data. The load still runs per request; only the render and the hash are
   skipped. A document that renders from anything else (a clock, a random
   source) declares `:memo? false` and gets no plan."
-  [{:keys [mode doc params loaded response etag]}]
+  [{:keys [mode doc document params loaded response etag]}]
   (if (and (= :ssr mode) (:load-fn doc))
-    {:kind :ssr :response response :etag etag
+    {:kind :ssr :response response :etag etag :document document
      :load-fn (:load-fn doc) :params params :data (:data loaded)}
     {:kind :static :response response :etag etag}))
 
 (defn- serve-document
-  [{:keys [documents cid-fn dev?]} {:keys [document layouts params]} query headers path]
+  [{:keys [documents cid-fn dev?]} {:keys [document layouts params]} query headers path preloaded]
   (let [doc (get documents document)
         params (merge query params)]
     (if (nil? doc)
@@ -211,8 +211,15 @@
                                                  :detail (str "route leaf " (pr-str document)
                                                               " is not in :documents")}))
                      {:dev? dev?})
-      (let [loaded (when (:load-fn doc)
+      (let [loaded (cond
+                     ;; the transport already ran THIS request's load (to find its
+                     ;; station stale) and hands the value over: one load per request
+                     (and preloaded (:load-fn doc) (= :ssr (:mode doc))
+                          (= document (:document preloaded)) (= params (:params preloaded)))
+                     {:ok true :data (:data preloaded) :mode :edge}
+
                      ;; the page inlines the value; it does not address it
+                     (:load-fn doc)
                      (load/run-load {:mode (if (= :ssr (:mode doc)) :edge :build)
                                      :load-fn (:load-fn doc) :params params :address? false}))]
         (if (and loaded (not (:ok loaded)))
@@ -235,7 +242,7 @@
                     resp (html-response status html (assoc opts :etag-in (header headers "if-none-match")))]
                 (cond-> resp
                   (and cid (= 200 status) (not (false? (:memo? doc))))
-                  (assoc ::plan (response-plan {:mode (:mode r) :doc doc :params params :loaded loaded
+                  (assoc ::plan (response-plan {:mode (:mode r) :doc doc :document document :params params :loaded loaded
                                                 :response (if (= 200 (:status resp)) resp (html-response 200 html opts))
                                                 :etag (etag-of cid)})))))))))))
 
@@ -344,6 +351,10 @@
   "One request → one response, as data.
      req: {:method \"GET\"|\"POST\"|… :url \"/path?q\" :headers {…} :body <parsed JSON or nil>}
      →    {:status n :headers {…} :body string}
+  `req` may carry `:shinkansen.host/preloaded` {:document :params :data} — the
+  value this request's load already answered (the transport ran it to find
+  its station stale); the host uses it instead of running the load again
+  when the document and params are the ones it resolves to.
   A GET/HEAD document response may also carry `:shinkansen.host/plan`
   (see `response-plan`) — what the transport may remember and the one
   condition under which it may answer from memory."
@@ -368,5 +379,5 @@
                                                      :detail (str "deepest matched: " (pr-str (:deepest r)))
                                                      :cid-fn cid-fn}))
                          {:dev? dev?})
-          (let [resp (serve-document ctx r query headers path)]
+          (let [resp (serve-document ctx r query headers path (::preloaded req))]
             (if (= "HEAD" method) (assoc resp :body "") resp)))))))

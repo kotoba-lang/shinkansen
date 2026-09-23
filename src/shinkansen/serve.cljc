@@ -78,7 +78,11 @@
     (.push a "content-length" (str body-length))
     a))
 
-(defn- station [{:keys [response etag kind load-fn params data]}]
+(def ^:private threw
+  "What a station's `load` answers when the load throws: never `=` to data."
+  #js {})
+
+(defn- station [{:keys [response etag kind load-fn params data document]}]
   (let [body (js/Buffer.from (str (:body response)) "utf8")
         cid (subs etag 1 (dec (count etag)))]
     #js {:ssr (= kind :ssr)
@@ -87,12 +91,31 @@
          :head (flat-headers (:headers response) (.-length body))
          :h304 #js ["etag" etag]
          :body body
-         ;; May the table answer this :ssr station? Only when the load,
-         ;; re-run with the station's params, answers a value `=` to the
-         ;; data the bytes were rendered from. A throwing load is a no.
-         :fresh (fn [] (try (= data (load-fn params)) (catch :default _ false)))
+         :threw threw
+         ;; An :ssr station may answer only when the load, re-run with its
+         ;; params, answers a value `=` to the data the bytes were rendered
+         ;; from. The value is handed to the host when it is not (`pre`), so a
+         ;; request runs its load once.
+         :load (fn [] (try (load-fn params) (catch :default _ threw)))
+         :same (fn [d] (= data d))
+         :pre (fn [d] {:document document :params params :data d})
          ;; If-None-Match that is a list: the host's full comparison
          :listMatch (fn [inm] (host/not-modified? inm cid))}))
+
+(def ^:private write-station
+  "(st, req, res) → writes the station's answer: 304 when If-None-Match names
+   its ETag, else 200 (no body for HEAD). A miss writes through this too, so
+   the headers are converted to the transport's form once, when the station
+   is built (clj->js of the response cost ~57 us per miss, 2026-09-23)."
+  (js/Function.
+   "st" "req" "res"
+   (str "var inm = req.headers['if-none-match'];"
+        "if (inm !== undefined && (inm === st.etag || inm === st.weak ||"
+        "    ((inm.indexOf(',') >= 0 || inm.indexOf(' ') >= 0) && st.listMatch(inm)))) {"
+        "  res.writeHead(304, st.h304); res.end(); return true; }"
+        "res.writeHead(200, st.head);"
+        "if (req.method === 'HEAD') res.end(); else res.end(st.body);"
+        "return true;")))
 
 (def ^:private answer-station
   "(table, req, res) → true when the table answered, false to fall through.
@@ -101,23 +124,23 @@
   a Map lookup, a header compare and a write — mechanism, no decision — and
   interpreted per request it cost ~11 us of the ~58 us a static response
   took (kbb/sci, bench/run.cljk cpu-us, 2026-09-23). The decisions stay in
-  Clojure and are called from here: `fresh` (an :ssr station's load, `=`)
-  and `listMatch` (an If-None-Match list, `host/not-modified?`)."
-  (js/Function.
-   "table" "req" "res"
-   (str "var m = req.method;"
-        "if (m !== 'GET' && m !== 'HEAD') return false;"
-        "var st = table.get(req.url);"
-        "if (st === undefined) return false;"
-        "if (st.ssr && !st.fresh()) return false;"
-        "table.hits = (table.hits | 0) + 1;"
-        "var inm = req.headers['if-none-match'];"
-        "if (inm !== undefined && (inm === st.etag || inm === st.weak ||"
-        "    ((inm.indexOf(',') >= 0 || inm.indexOf(' ') >= 0) && st.listMatch(inm)))) {"
-        "  res.writeHead(304, st.h304); res.end(); return true; }"
-        "res.writeHead(200, st.head);"
-        "if (m === 'HEAD') res.end(); else res.end(st.body);"
-        "return true;")))
+  Clojure and are called from here: `load`/`same` (an :ssr station's load,
+  `=`) and `listMatch` (an If-None-Match list, `host/not-modified?`). A stale
+  :ssr station leaves the value its load answered on the request
+  (`shinkansenPreload`) for the host."
+  ((js/Function.
+    "write"
+    (str "return function (table, req, res) {"
+         "var m = req.method;"
+         "if (m !== 'GET' && m !== 'HEAD') return false;"
+         "var st = table.get(req.url);"
+         "if (st === undefined) return false;"
+         "if (st.ssr) { var d = st.load();"
+         "  if (d === st.threw) return false;"
+         "  if (!st.same(d)) { req.shinkansenPreload = st.pre(d); return false; } }"
+         "table.hits = (table.hits | 0) + 1;"
+         "return write(st, req, res); };"))
+   write-station))
 
 (def ^:private listener
   "(table, fast, slow) → the node:http listener: the table first, then the
@@ -125,10 +148,14 @@
   (js/Function. "table" "fast" "slow"
                 "return function (req, res) { if (!fast(table, req, res)) slow(req, res); };"))
 
-(defn- remember! [^js table url resp]
+(defn- remember!
+  "Keep the plan's station for `url`; answers the station (nil without a plan)."
+  [^js table url resp]
   (when-let [plan (::host/plan resp)]
     (when (>= (.-size table) table-limit) (.clear table))
-    (.set table url (station plan))))
+    (let [st (station plan)]
+      (.set table url st)
+      st)))
 
 (defn- error-ctx
   "The ctx a failed rebuild serves: the last good tree, every leaf replaced
@@ -165,9 +192,12 @@
                     (when-let [t @timer] (js/clearTimeout t))
                     (reset! timer (js/setTimeout rebuild! debounce-ms)))
         watchers (atom [])
-        respond! (fn [^js res url resp]
-                   (when (::host/plan resp) (remember! table url resp))
-                   (write-response res resp))
+        respond! (fn [^js req ^js res url resp]
+                   ;; a document with a plan is written from its station: the
+                   ;; same bytes and headers a hit writes, converted once
+                   (if-let [st (remember! table url resp)]
+                     (write-station st req res)
+                     (write-response res resp)))
         threw (fn [^js res e]
                 (write-response res {:status 500
                                      :headers {"content-type" "application/json"}
@@ -188,9 +218,11 @@
 
                       ;; GET/HEAD carry no body the host reads: answer now
                       get?
-                      (try (respond! res url (host/handle {:method method :url url
-                                                           :headers (get-headers req) :body nil}
-                                                          @current))
+                      (try (respond! req res url
+                                     (host/handle {:method method :url url
+                                                   :headers (get-headers req) :body nil
+                                                   ::host/preloaded (.-shinkansenPreload req)}
+                                                  @current))
                            (catch :default e (threw res e)))
 
                       :else
