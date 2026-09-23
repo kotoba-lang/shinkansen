@@ -3258,7 +3258,7 @@ body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inse
         <ul>
           <li>Already-answered URLs come from a table of pre-encoded bytes: the ETag is the CID of those bytes, so the answer is a value. That is where the static and 304 numbers come from.</li>
           <li>When the data changes on every request, shinkansen costs 8.0× the CPU of plain node:http: the app's render and the CID encoding run interpreted (kbb/sci), the others run V8-JIT'd JavaScript. Next.js costs 2.1× of shinkansen there.</li>
-          <li>Compiling that render instead (.kotoba, amu --target js) is not a way out yet: it measured ~50× slower than the interpreted .cljc, because the emitted runtime re-validates every value on every operation (kotoba-lang/kotoba-script#103). See bench/README.md.</li>
+          <li>Compiling that render instead (.kotoba, amu --target js) is not a way out yet: after kotoba-lang/kotoba-script#103 (fixed; it was ~50× slower) it measures ~3–6× the interpreted .cljc, the rest being per-call type checks (#104). See bench/README.md.</li>
           <li>Next.js and Nuxt serve the same bytes through Route Handlers and Nitro server routes, each with its best documented static option. Next.js's force-static route ignores If-None-Match, so its 304 runs on a dynamic handler.</li>
           <li>The machine was shared (1-minute load average 136 when the run finished). CPU per response holds up under that; requests per second does not.</li>
         </ul>

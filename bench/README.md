@@ -108,19 +108,25 @@ the route walk (remembered per identical tree), the whole-header conversion.
 
 The obvious next lever is to stop interpreting the render: write it in
 `.kotoba` and compile it with amu. Measured with the `/live` render written
-in `.kotoba` (`amu compile --target js --jvm-free`, same output bytes):
+in `.kotoba` (`amu compile --target js --jvm-free`, same output bytes, a fresh
+guest instance per render):
 
-| | µs / call |
+| | µs / render (20 rows) |
 |---|---:|
 | `.cljc` render under kbb/sci | ~110 |
-| `.kotoba` render, `--target js` | **~5,600** |
+| `.kotoba`, kotoba-script before #103 | ~5,600 |
+| `.kotoba`, kotoba-script 63d576e (#103 fixed) | ~330–630 |
+| + handing the data across as EDN text (pr-str, interpreted) | +~100 |
 
-The emitted runtime re-validates a value on every operation (a full UTF-8
-scan per string argument, a whole-string `TextEncoder` per substring, an
-O(size) document access), so building a string or walking a document is
-O(n²). Reported upstream with the numbers and a repro:
-[kotoba-lang/kotoba-script#103](https://github.com/kotoba-lang/kotoba-script/issues/103).
-Until that lands the compiled path is the slowest option, not the fastest.
+The emitted runtime used to re-validate a value on every operation (a full
+UTF-8 scan per string, a whole-document walk per access), so building a
+string or walking a document was O(n²):
+[kotoba-lang/kotoba-script#103](https://github.com/kotoba-lang/kotoba-script/issues/103),
+fixed 2026-09-23 (a 30-row render 11.1 ms → 0.79 ms; linear in rows now).
+What remains is per-call type checking on generic options and the EDN reader
+([#104](https://github.com/kotoba-lang/kotoba-script/issues/104), profile
+attached). Until that closes the compiled path is still ~3–6× the interpreted
+one, so shinkansen does not switch to it yet.
 
 ## Competitor fixtures are JS on purpose
 
