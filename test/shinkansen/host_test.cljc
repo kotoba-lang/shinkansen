@@ -167,3 +167,20 @@
     (is (= "<p>B</p>" (:body (get* c2 "/"))) "a new tree resolves anew")
     (is (= 404 (:status (get* c2 "/x"))))
     (is (= "<p>A</p>" (:body (get* c1 "/"))) "and back")))
+
+(deftest a-preloaded-value-replaces-the-load-only-for-its-own-document-and-params
+  (let [calls (atom 0)
+        docs {:item {:mode :ssr :load-fn (fn [p] (swap! calls inc) {:id (:id p) :from :load})
+                     :render-fn (fn [_ d] (str "<p>" (:id d) " " (name (:from d)) "</p>"))}}
+        c {:tree {:path "/" :children [{:path ":id" :document :item}]} :documents docs
+           :cid-fn (fn [t] (str "cid-" (hash t)))}
+        get-pre (fn [url pre] (host/handle {:method "GET" :url url :headers {} ::host/preloaded pre} c))]
+    (testing "matching document + params: the load does not run again"
+      (is (= "<p>7 transport</p>" (:body (get-pre "/7" {:document :item :params {:id "7"} :data {:id "7" :from :transport}}))))
+      (is (= 0 @calls)))
+    (testing "the plan names the document the transport must hand back"
+      (is (= :item (:document (::host/plan (get-pre "/7" {:document :item :params {:id "7"} :data {:id "7" :from :transport}}))))))
+    (testing "other params, or another document: the host runs its own load"
+      (is (= "<p>8 load</p>" (:body (get-pre "/8" {:document :item :params {:id "7"} :data {:id "7" :from :transport}}))))
+      (is (= "<p>8 load</p>" (:body (get-pre "/8" {:document :other :params {:id "8"} :data {:id "8" :from :transport}}))))
+      (is (= 2 @calls)))))
