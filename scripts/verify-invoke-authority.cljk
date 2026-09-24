@@ -1,7 +1,7 @@
 (ns verify-invoke-authority
   "The authority seam under a REAL authorizer, both directions.
 
-  `test/shinkansen/invoke_test.cljc` proves the seam with a fake
+  `test/shinkansen/invoke_test.cljk` proves the seam with a fake
   authorize-fn — it can only say the seam calls what it was given and
   refuses when given nothing. This script binds the seam to the workspace's
   actual decision path and runs an app through it:

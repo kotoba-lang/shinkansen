@@ -206,26 +206,26 @@ cookie `shinkansen_locale`（§2.3）も **document ごとに別**になり、CI
 
 ## 2. モジュール
 
-    src/shinkansen/state.cljc    db 値 → CID chain（純粋、hash fn 注入、persistence は caller）
-    src/shinkansen/publish.cljc  publish manifest（自己完結検査 + scripts/publish-document.cljk の argv）
-    src/shinkansen/mcp.cljc      MCP tool 宣言 + dispatch（純粋、handler 注入）
-    src/shinkansen/locale.cljc   locale negotiation 契約（cookie ベース、path 非依存、純粋）
-    src/shinkansen/viewport.cljc multi-screen-size 契約（viewport meta + xs band、静的 audit）
-    src/shinkansen/audit.cljc    UI/UX document 契約 = 決定論的 fitness function（22 軸、理由付き finding）
-    src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
-    src/shinkansen/interaction.cljc browser 側の契約（data-action / data-params、run stream、hydrate、theme、locale）+ 1 本の runtime
-    src/shinkansen/theme.cljc    light / dark / system の契約（storage、属性、head-script、theme/set）
-    src/shinkansen/invoke.cljc   invocation envelope（query / action / event）+ authority seam（authorize-fn 注入、無ければ拒否）+ MCP / route adapter
-    src/shinkansen/routes.cljc   name → artifact の resolver（ok 結果に :invocation を同梱）
-    src/shinkansen/actions.cljc  post-authorization の宣言検査 + chain entry（binding は invoke 経由でここに来る）
-    src/shinkansen/load.cljc     query の答え = data station（EDN text の CID）
-    src/shinkansen/render.cljc   :ssg / :ssr / :isr。:ssr は query、cid-fn で :document-cid
-    src/shinkansen/host.cljc     reference host（request → response の純関数: name → bytes、POST /invoke、named status）
-    src/shinkansen/serve.cljc    node:http transport + dev loop（watch / rebuild / reload stream / error-as-500）
-    src/shinkansen/maturity.cljc Next / SvelteKit / shadcn / Radix との比較を data で（declared vs driven、test で ns 実在を pin）
-    src/shinkansen/form.cljc     schema（data）→ validate（coerce + field ごとの理由）→ field-attrs（aria-invalid / describedby）
-    src/shinkansen/live.cljc     live regions（§2.7）: frame algebra（snapshot / delta / heartbeat / error、`reconcile` 純粋）+ keyed DOM patcher の runtime + `:live-stable` の helper
-    examples/reference_app.cljc  本物の CID・本物の Biscuit authorizer を束ねた todo app（`npm run host`）
+    src/shinkansen/state.cljk    db 値 → CID chain（純粋、hash fn 注入、persistence は caller）
+    src/shinkansen/publish.cljk  publish manifest（自己完結検査 + scripts/publish-document.cljk の argv）
+    src/shinkansen/mcp.cljk      MCP tool 宣言 + dispatch（純粋、handler 注入）
+    src/shinkansen/locale.cljk   locale negotiation 契約（cookie ベース、path 非依存、純粋）
+    src/shinkansen/viewport.cljk multi-screen-size 契約（viewport meta + xs band、静的 audit）
+    src/shinkansen/audit.cljk    UI/UX document 契約 = 決定論的 fitness function（22 軸、理由付き finding）
+    src/shinkansen/coscientist.cljk Generate→Reflect→Rank(Elo)→Evolve→Meta の kaizen loop（judge = audit）
+    src/shinkansen/interaction.cljk browser 側の契約（data-action / data-params、run stream、hydrate、theme、locale）+ 1 本の runtime
+    src/shinkansen/theme.cljk    light / dark / system の契約（storage、属性、head-script、theme/set）
+    src/shinkansen/invoke.cljk   invocation envelope（query / action / event）+ authority seam（authorize-fn 注入、無ければ拒否）+ MCP / route adapter
+    src/shinkansen/routes.cljk   name → artifact の resolver（ok 結果に :invocation を同梱）
+    src/shinkansen/actions.cljk  post-authorization の宣言検査 + chain entry（binding は invoke 経由でここに来る）
+    src/shinkansen/load.cljk     query の答え = data station（EDN text の CID）
+    src/shinkansen/render.cljk   :ssg / :ssr / :isr。:ssr は query、cid-fn で :document-cid
+    src/shinkansen/host.cljk     reference host（request → response の純関数: name → bytes、POST /invoke、named status）
+    src/shinkansen/serve.cljk    node:http transport + dev loop（watch / rebuild / reload stream / error-as-500）
+    src/shinkansen/maturity.cljk Next / SvelteKit / shadcn / Radix との比較を data で（declared vs driven、test で ns 実在を pin）
+    src/shinkansen/form.cljk     schema（data）→ validate（coerce + field ごとの理由）→ field-attrs（aria-invalid / describedby）
+    src/shinkansen/live.cljk     live regions（§2.7）: frame algebra（snapshot / delta / heartbeat / error、`reconcile` 純粋）+ keyed DOM patcher の runtime + `:live-stable` の helper
+    examples/reference_app.cljk  本物の CID・本物の Biscuit authorizer を束ねた todo app（`npm run host`）
     test/                        168 tests / 667 assertions, 0 fail 0 error（nbb via kbb）
 
 ### 2.1 publish の 2 面契約
@@ -378,7 +378,7 @@ transport + dev loop:
                         **最後の良い tree のまま全 leaf を error document（500）に差し替えて理由を見せる**。
                         HMR は無い —— hot-swap する module が無く、新しい document CID が在るだけ
 
-reference app（`examples/reference_app.cljc`、`npm run host`）は本物を束ねる: cid-fn = content-address
+reference app（`examples/reference_app.cljk`、`npm run host`）は本物を束ねる: cid-fn = content-address
 （sha2-256 → raw CIDv1、publish 経路と同じ lib。ETag は本物の CID）、authorize-fn = §3.1 の binding
 （Ed25519 Biscuit → `biscuit.kotoba/authorize`、kind を 1 つに閉じる）、grant wire = `Bearer <base64 EDN token
 model>`（**この app の wire**であって framework の wire ではない）。`/`（:ssg、interaction runtime を inline した
