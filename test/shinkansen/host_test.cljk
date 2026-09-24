@@ -2,7 +2,7 @@
   "The reference host as a pure function: request data → response data,
   every branch named. The running server is scripts/host-node-check.cljk;
   this pins what the transport hands it."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.lang.text :as str]
             [shinkansen.host :as host]))
 

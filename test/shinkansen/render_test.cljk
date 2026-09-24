@@ -1,7 +1,7 @@
 (ns shinkansen.render-test
   "Rendering modes: declared, checked against what the document carries,
   fail-closed on mismatch."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [shinkansen.render :as render]))
 
 (deftest ssg-is-the-default

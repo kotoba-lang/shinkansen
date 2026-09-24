@@ -4,7 +4,7 @@
   directions with the reason literal pinned. The runtime string is
   executed in Node by scripts/runtime-node-check.cljk (node identity
   across frames, order, removal, the select rebuild)."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.lang.text :as str]
             [shinkansen.live :as live]
             [shinkansen.audit :as audit]

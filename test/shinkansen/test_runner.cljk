@@ -7,7 +7,7 @@
   - run-tests returns nil and *report-counters* is not exposed on this
     engine, so failure detection is via the printed per-namespace summary +
     a custom :report hook capturing pass/fail into an atom."
-  (:require [clojure.test :as t :refer [run-tests]]
+  (:require [kotoba.test :as t :refer [run-tests]]
             shinkansen.bridge-test
             shinkansen.state-test
             shinkansen.mcp-test

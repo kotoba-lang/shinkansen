@@ -1,7 +1,7 @@
 (ns shinkansen.load-test
   "Data loading: a load result is a content-addressed station, EDN-bound,
   with a hydrate bundle that rides in the document."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [shinkansen.load :as load]))
 
 (def cid-fn (fn [text] (str "cid-" (hash text))))

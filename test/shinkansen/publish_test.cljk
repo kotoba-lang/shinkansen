@@ -1,5 +1,5 @@
 (ns shinkansen.publish-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [shinkansen.publish :as publish]))
 
 (deftest self-contained-document-manifests

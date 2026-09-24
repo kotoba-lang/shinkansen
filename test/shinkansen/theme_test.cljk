@@ -2,7 +2,7 @@
   "The theme contract and the framework actions: what is stored, what the
   attribute says, what `system` means, and that the audit treats the
   framework's own actions as declared."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.lang.text :as str]
             [shinkansen.theme :as theme]
             [shinkansen.locale :as locale]

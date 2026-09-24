@@ -1,7 +1,7 @@
 (ns shinkansen.actions-test
   "Declared-event dispatch: browser and agent share one surface,
   fail-closed on undeclared/invalid events."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [shinkansen.actions :as actions]))
 
 (def decl
