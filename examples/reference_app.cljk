@@ -20,7 +20,7 @@
 
   `npm run host` starts it and prints a dev token for app A, minted from a
   root seed that is FIXED for the demo (`reference-root-seed`); a real
-  deployment mints from `auth.kotobase.net/v1/biscuit/token` and never
+  deployment mints from `auth.kotoba.cloud/v1/biscuit/token` and never
   ships a root private key.
 
   Requires the sibling repos at their west pins on the classpath:
