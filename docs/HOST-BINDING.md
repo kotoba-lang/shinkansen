@@ -3,7 +3,7 @@
 Cheat sheet for product hosts (console / docs / blog / auth Workers) that
 should **require shinkansen contracts** instead of re-deriving them. UI
 markers live in jp-go-dds / cloud-kotoba-dds; this repo owns audit, theme,
-locale, and invoke. The measured map is `src/shinkansen/maturity.cljc`
+locale, and invoke. The measured map is `src/shinkansen/maturity.cljk`
 (SPEC §2.5 / §6). Do not invent a second copy.
 
 ## 1. Locale — require `shinkansen.locale`
@@ -71,4 +71,4 @@ A Worker that serves bytes via asset binding cannot hand the document to
 - `routes/paths->tree` — flat emit → tree; the path is a name, not identity
 - adapter receipts at `/.well-known/shinkansen/receipts.json`
 
-See `src/shinkansen/host.cljc` and `src/shinkansen/adapter.cljc`.
+See `src/shinkansen/host.cljk` and `src/shinkansen/adapter.cljk`.

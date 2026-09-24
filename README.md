@@ -63,17 +63,17 @@ and cannot claim a CID.
 
     docs/SPEC.md                   仕様（設計原理・モジュール契約・検証・次の一段）
     docs/HOST-BINDING.md           kotoba.cloud Worker/host cheat sheet (locale / theme / audit / invoke / receipts)
-    src/shinkansen/publish.cljc    view/document → CID (both planes), fail-closed
-    src/shinkansen/state.cljc      db value → CID chain (Unison-style content addressing)
-    src/shinkansen/invoke.cljc     invocation envelope (query / action / event) + the authority seam
-    src/shinkansen/routes.cljc     name → artifact resolver (the path is a reference, not identity)
-    src/shinkansen/actions.cljc    post-authorization declaration check + chain entry
-    src/shinkansen/mcp.cljc        MCP tool surface (stdio JSON-RPC, kotoba-server shape); lake_dispatch is an invoke transport
-    src/shinkansen/interaction.cljc  browser contract (data-action / run stream / hydrate / theme / locale) + one runtime
-    src/shinkansen/theme.cljc      light / dark / system — storage, attribute, head script, theme/set
-    src/shinkansen/viewport.cljc   multi-screen-size contract (viewport meta + phone band)
-    src/shinkansen/audit.cljc      UI/UX document contract as a deterministic fitness function (21 axes)
-    src/shinkansen/coscientist.cljc Generate→Reflect→Rank(Elo)→Evolve→Meta kaizen loop, judge = audit
+    src/shinkansen/publish.cljk    view/document → CID (both planes), fail-closed
+    src/shinkansen/state.cljk      db value → CID chain (Unison-style content addressing)
+    src/shinkansen/invoke.cljk     invocation envelope (query / action / event) + the authority seam
+    src/shinkansen/routes.cljk     name → artifact resolver (the path is a reference, not identity)
+    src/shinkansen/actions.cljk    post-authorization declaration check + chain entry
+    src/shinkansen/mcp.cljk        MCP tool surface (stdio JSON-RPC, kotoba-server shape); lake_dispatch is an invoke transport
+    src/shinkansen/interaction.cljk  browser contract (data-action / run stream / hydrate / theme / locale) + one runtime
+    src/shinkansen/theme.cljk      light / dark / system — storage, attribute, head script, theme/set
+    src/shinkansen/viewport.cljk   multi-screen-size contract (viewport meta + phone band)
+    src/shinkansen/audit.cljk      UI/UX document contract as a deterministic fitness function (21 axes)
+    src/shinkansen/coscientist.cljk Generate→Reflect→Rank(Elo)→Evolve→Meta kaizen loop, judge = audit
     kotoba/                        .kotoba guests (bridge modules, compiled by amu)
     test/                          kbb -M:test
 
@@ -88,7 +88,7 @@ npm run verify:live    # the contract on a LIVE name host (kotoba.cloud, docs.ko
 ```
 
 The host is the one place every contract is DRIVEN rather than declared
-(SPEC §2.5). `src/shinkansen/maturity.cljc` is the honest map of what a
+(SPEC §2.5). `src/shinkansen/maturity.cljk` is the honest map of what a
 product still has to pick up — declared vs driven, with measured consumer
 counts — and its test pins that every namespace it names exists.
 
@@ -133,7 +133,7 @@ attached yet (R0)" — declared but unimplemented must be visible.
 
 ## Status
 
-The map is [`src/shinkansen/maturity.cljc`](src/shinkansen/maturity.cljc)
+The map is [`src/shinkansen/maturity.cljk`](src/shinkansen/maturity.cljk)
 (declared vs driven-by-host vs driven-by-product). Measured-at **2026-09-16**.
 Counts by status: **driven-by-product 12**, **driven-by-host 4**, **declared 3**,
 **not-by-design 2**, **absent 1**.
