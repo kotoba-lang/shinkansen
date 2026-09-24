@@ -383,7 +383,7 @@ reference app（`examples/reference_app.cljk`、`npm run host`）は本物を束
 （Ed25519 Biscuit → `biscuit.kotoba/authorize`、kind を 1 つに閉じる）、grant wire = `Bearer <base64 EDN token
 model>`（**この app の wire**であって framework の wire ではない）。`/`（:ssg、interaction runtime を inline した
 form）、`/todos`（:ssr）、`/todos/:id`（:ssr + path param）、`POST /invoke`。root 鍵は demo 用の固定 seed ——
-本番は `auth.kotobase.net/v1/biscuit/token` で発行し root 秘密鍵を配らない。
+本番は `auth.kotoba.cloud/v1/biscuit/token` で発行し root 秘密鍵を配らない。
 
 **product binding（kotoba.cloud、2026-09-16）**: bytes を asset binding が配る Worker は `host/handle` に
 document を渡せない。そのために公開した seam が `host/document-headers`（ETag = CID / Link / no-cache）、
@@ -723,7 +723,7 @@ visual shell を複製しないこと (ADR-2609092600 :document の自己完結�
    を shinkansen publish 経由に置き換え
 2. **authorize-fn の実体を production に束ねる**: §3.1 の binding（verify → `biscuit.kotoba/authorize`、
    kind を 1 つに閉じる）を host に置き、`lake_dispatch` の R0 refusal を本物の decision に置き換える。
-   session の principal は CACAO（人）/ DID（agent）から、grant は `auth.kotobase.net/v1/biscuit/token`
+   session の principal は CACAO（人）/ DID（agent）から、grant は `auth.kotoba.cloud/v1/biscuit/token`
    から。`:chain/append` / `:app/query` / `:app/assert` を `lang/capability-semantics.edn` の `:kinds` に
    登録する（無ければ `:unknown-kind :deny`）。**framework 側に Biscuit parser を置かない。**
 3. ~~product が reference host を通る~~ → **着地（2026-09-16、kotoba.cloud）**: app-kotoba-cloud の render が
