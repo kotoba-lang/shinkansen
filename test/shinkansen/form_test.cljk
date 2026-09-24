@@ -1,7 +1,7 @@
 (ns shinkansen.form-test
   "Schema validation by field, coercion of what a form posts, the
   field-error markup contract, and the schema as an event gate."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [shinkansen.actions :as actions]
             [shinkansen.form :as form]))
 

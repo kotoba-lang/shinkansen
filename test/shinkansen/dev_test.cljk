@@ -1,7 +1,7 @@
 (ns shinkansen.dev-test
   "Dev loop contract: snapshot gates with the SAME audit as publish,
   errors become content, unchanged content costs nothing."
-  (:require [kotoba.lang.text] [clojure.test :refer [deftest is]]
+  (:require [kotoba.lang.text] [kotoba.test :refer [deftest is]]
             [shinkansen.dev :as dev]
             [shinkansen.viewport :as vp]))
 

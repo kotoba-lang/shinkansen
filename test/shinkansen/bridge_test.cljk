@@ -1,6 +1,6 @@
 (ns shinkansen.bridge-test
-  (:require [clojure.test :refer [deftest is]]
-            [clojure.edn :as edn]
+  (:require [kotoba.test :refer [deftest is]]
+            [kotoba.lang.edn :as edn]
             [shinkansen.bridge :as bridge]
             [shinkansen.state :as state]))
 

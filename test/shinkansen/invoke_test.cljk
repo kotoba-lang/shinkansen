@@ -4,7 +4,7 @@
   nobody said no. Each refusal pins its reason literal — a negative test
   that only asserts (not (:ok r)) counts a run that failed for another
   reason (CLAUDE.md 8 問 #6)."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [shinkansen.invoke :as invoke]
             [shinkansen.routes :as routes]))
 

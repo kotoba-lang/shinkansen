@@ -2,7 +2,7 @@
   "Both directions for every axis: a document that passes it and a document
   that fails it WITH the reason literal pinned — a negative test that only
   asserts the score counts runs that failed for another reason."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.lang.text :as str]
             [shinkansen.audit :as audit]))
 

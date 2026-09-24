@@ -1,7 +1,7 @@
 (ns shinkansen.adapter-test
   "Adapter seam: gate first, then adapt; receipts are CID sets; deploy
   diff and rollback are set operations."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [shinkansen.adapter :as adapter]
             [shinkansen.viewport :as vp]))
 

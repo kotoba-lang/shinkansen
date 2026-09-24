@@ -1,5 +1,5 @@
 (ns shinkansen.state-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [shinkansen.state :as state]))
 
 (def ^:private cid-fake

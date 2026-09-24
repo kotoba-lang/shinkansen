@@ -1,7 +1,7 @@
 (ns shinkansen.viewport-test
   "Contract tests for the framework viewport default: a published document
   must carry the device-width viewport meta and lay out for phones."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [shinkansen.viewport :as vp]))
 
 (def responsive-doc

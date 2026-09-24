@@ -1,6 +1,6 @@
 (ns shinkansen.routes-test
   "Route tree resolution: path → document CID via a declared tree."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [shinkansen.routes :as routes]))
 
 (def tree
